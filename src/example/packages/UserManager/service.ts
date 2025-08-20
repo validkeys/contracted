@@ -1,5 +1,5 @@
 import { serviceFrom } from '../../../core/serviceFrom.ts';
-import { UserManagerDependencies } from '../contracts/UserManager/index.ts';
+import { createUserContract } from '../contracts/UserManager/index.ts';
 import { createUser } from './commands/createUser.ts';
 // Import other commands as you create them
 // import { deleteUser } from './commands/deleteUser.ts';
@@ -25,7 +25,8 @@ export const createUserService = serviceFrom({
 export type UserService = ReturnType<typeof createUserService>;
 
 /**
- * Type alias for the dependencies required by the UserManager service
+ * Type for the dependencies required by the UserManager service
+ * Extracted from the contract's dependency type
  */
-export type { UserManagerDependencies };
+export type UserManagerDependencies = typeof createUserContract.types.Dependencies;
 

@@ -396,6 +396,12 @@ const validOutput = userService.createUser.validateOutput(result.value);
 ```typescript
 import { ServiceDependencies, ServiceErrors } from './core/serviceFrom';
 
+// Extract types from individual contracts
+type CreateUserInput = typeof createUserContract.types.Input;
+type CreateUserOutput = typeof createUserContract.types.Output;
+type CreateUserDeps = typeof createUserContract.types.Dependencies;
+
+// Extract types from service collections
 type UserServiceDeps = ServiceDependencies<typeof userCommands>;
 type UserServiceErrors = ServiceErrors<typeof userCommands>;
 ```
@@ -548,10 +554,15 @@ The Service Command architecture uses a clean separation between contracts and i
 ### Usage Example
 ```typescript
 // Import contracts for type definitions
-import { UserManagerDependencies, CreateUserInput } from './contracts/UserManager';
+import { createUserContract } from './contracts/UserManager';
 
 // Import implementation for actual usage
 import { createUserService } from './UserManager';
+
+// Access types from the contract
+type CreateUserInput = typeof createUserContract.types.Input;
+type CreateUserOutput = typeof createUserContract.types.Output;
+type UserManagerDeps = typeof createUserContract.types.Dependencies;
 
 // Use with full type safety
 const service = createUserService(dependencies);

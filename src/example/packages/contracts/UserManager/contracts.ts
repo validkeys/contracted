@@ -35,31 +35,3 @@ export const createUserContract = defineContract({
   },
   errors: createUserErrors,
 });
-
-/**
- * Type definitions for UserManager dependencies
- */
-export type UserManagerDependencies = {
-  userRepository: UserRepository;
-  idGenerator: IdGenerator;
-  logger: Logger;
-  emailService?: EmailService;
-};
-
-/**
- * Input type for creating a user
- */
-export type CreateUserInput = z.infer<typeof createUserContract.schemas.input>;
-
-/**
- * Output type for user creation
- */
-export type CreateUserOutput = z.infer<typeof createUserContract.schemas.output>;
-
-/**
- * Options for user creation
- */
-export type CreateUserOptions = {
-  skipDuplicateCheck?: boolean;
-  sendWelcomeEmail?: boolean;
-};
