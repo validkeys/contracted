@@ -100,9 +100,10 @@ const result = await userService.getUser.run({ userId: '123' });
 
 ### 1. Define Errors
 
-Start by defining the possible error conditions for your operations using tagged errors:
+Start by defining the possible error conditions in your contracts package:
 
 ```typescript
+// src/packages/contracts/UserManager/errors.ts
 import { defineError } from './core/errors';
 
 // Define specific error types with typed data
@@ -137,24 +138,39 @@ export const createUserErrors = [
 ] as const;
 ```
 
-### 2. Define a Contract
+### 2. Define Contracts
 
-Contracts specify the interface for your operations:
+Create contracts that specify interfaces and dependencies in your contracts package:
 
 ```typescript
+// src/packages/contracts/UserManager/contracts.ts
 import { z } from 'zod';
 import { defineContract } from './core/defineContract';
-import { createUserErrors } from './internal/errors';
+import { createUserErrors } from './errors';
 
-const createUserContract = defineContract({
-  // Input validation schema
+// Define dependency interfaces
+export interface UserRepository {
+  save: (user: any) => Promise<void>;
+  findByEmail: (email: string) => Promise<any | null>;
+  findById: (id: string) => Promise<any | null>;
+}
+
+export interface IdGenerator {
+  generate: () => string;
+}
+
+export interface Logger {
+  info: (message: string, data?: any) => void;
+  error: (message: string, error: Error) => void;
+}
+
+// Define the contract
+export const createUserContract = defineContract({
   input: z.object({
     email: z.string().email(),
     name: z.string().min(1).max(100),
     age: z.number().min(18).max(120),
   }),
-  
-  // Output validation schema
   output: z.object({
     id: z.string(),
     email: z.string(),
@@ -162,39 +178,32 @@ const createUserContract = defineContract({
     age: z.number(),
     createdAt: z.date(),
   }),
-  
-  // Required dependencies (typed interfaces)
   dependencies: {
-    userRepository: {} as {
-      save: (user: any) => Promise<void>;
-      findByEmail: (email: string) => Promise<any | null>;
-    },
-    idGenerator: {} as {
-      generate: () => string;
-    },
-    logger: {} as {
-      info: (message: string, data?: any) => void;
-      error: (message: string, error: Error) => void;
-    },
+    userRepository: {} as UserRepository,
+    idGenerator: {} as IdGenerator,
+    logger: {} as Logger,
   },
-  
-  // Optional configuration
   options: {} as {
     skipDuplicateCheck?: boolean;
     sendWelcomeEmail?: boolean;
   },
-  
-  // Possible error types
   errors: createUserErrors,
 });
 ```
 
 ### 3. Implement the Contract
 
-Add the business logic to your contract:
+Add the business logic in your implementation package:
 
 ```typescript
+// src/packages/UserManager/commands/createUser.ts
 import { ok, err } from 'neverthrow';
+import { 
+  createUserContract,
+  UserAlreadyExistsError,
+  InvalidUserDataError,
+  UserRepositoryError,
+} from '../../contracts/UserManager/index';
 
 export const createUser = createUserContract.implementation(
   async ({ input, deps, options }) => {
@@ -243,23 +252,23 @@ export const createUser = createUserContract.implementation(
 
 ### 4. Create a Service
 
-Compose multiple commands into a service:
+Compose multiple commands into a service in your implementation package:
 
 ```typescript
+// src/packages/UserManager/service.ts
 import { serviceFrom } from './core/serviceFrom';
+import { UserManagerDependencies } from '../contracts/UserManager';
 import { createUser } from './commands/createUser';
-import { deleteUser } from './commands/deleteUser';
-import { updateUser } from './commands/updateUser';
 
-// Create service factory
 export const createUserService = serviceFrom({
   createUser,
-  deleteUser,
-  updateUser,
+  // Add other commands here
+  // deleteUser,
+  // updateUser,
 });
 
-// Export service type for dependency injection
 export type UserService = ReturnType<typeof createUserService>;
+export type { UserManagerDependencies };
 ```
 
 ### 5. Use the Service
@@ -267,12 +276,14 @@ export type UserService = ReturnType<typeof createUserService>;
 Initialize and use your service:
 
 ```typescript
+// src/example/index.ts
+import { createUserService, UserManagerDependencies } from './packages/UserManager';
+
 // Initialize with dependencies
 const userService = createUserService({
   userRepository: new UserRepository(),
   idGenerator: new IdGenerator(),
   logger: new Logger(),
-  emailService: new EmailService(),
 });
 
 // Execute commands
@@ -487,20 +498,59 @@ The `src/example` folder contains a complete example showing:
 ### File Structure
 ```
 src/
-├── core/                    # Core library code
-│   ├── defineContract.ts    # Contract definition
-│   ├── errors.ts           # Error handling utilities
-│   ├── serviceFrom.ts      # Service composition
-│   └── types.ts            # Type definitions
-└── example/                # Usage examples
-    ├── index.ts            # Example usage
+├── core/                           # Core library code
+│   ├── defineContract.ts           # Contract definition
+│   ├── errors.ts                  # Error handling utilities
+│   ├── serviceFrom.ts             # Service composition
+│   └── types.ts                   # Type definitions
+└── example/                       # Usage examples
+    ├── index.ts                   # Example usage
     └── packages/
-        └── UserManager/
-            ├── service.ts           # Service composition
+        ├── contracts/             # Contract definitions (interfaces)
+        │   └── UserManager/
+        │       ├── contracts.ts   # Service contracts
+        │       ├── errors.ts      # Error definitions
+        │       └── index.ts       # Package exports
+        └── UserManager/           # Implementation package
             ├── commands/
-            │   └── createUser.ts    # Command implementation
-            └── internal/
-                └── errors.ts        # Error definitions
+            │   └── createUser.ts  # Command implementation
+            ├── service.ts         # Service composition
+            └── index.ts           # Package exports
+```
+
+## Package Structure
+
+The Service Command architecture uses a clean separation between contracts and implementations:
+
+### Contracts Package (`contracts/`)
+- **Purpose**: Defines interfaces, types, and error definitions
+- **Contents**: Service contracts, dependency interfaces, error types
+- **Benefits**: 
+  - Clear API definitions independent of implementation
+  - Easy to share between teams
+  - Enables contract-first development
+  - Facilitates testing with mocks
+
+### Implementation Packages (`UserManager/`, etc.)
+- **Purpose**: Provides actual business logic implementations
+- **Contents**: Command implementations, service composition
+- **Benefits**:
+  - Multiple implementations of same contracts
+  - Clean separation of concerns
+  - Easier testing and mocking
+  - Better code organization
+
+### Usage Example
+```typescript
+// Import contracts for type definitions
+import { UserManagerDependencies, CreateUserInput } from './contracts/UserManager';
+
+// Import implementation for actual usage
+import { createUserService } from './UserManager';
+
+// Use with full type safety
+const service = createUserService(dependencies);
+const result = await service.createUser.run(input);
 ```
 
 ## Benefits

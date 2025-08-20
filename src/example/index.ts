@@ -1,15 +1,14 @@
-import { createUserService } from './packages/UserManager/service.ts';
+import { createUserService, UserManagerDependencies } from './packages/UserManager/index.ts';
 import { matchError } from '../core/errors.ts';
 import { 
   UserAlreadyExistsError,
   UserRepositoryError,
   InvalidUserDataError
-} from './packages/UserManager/internal/errors.ts';
+} from './packages/contracts/UserManager/index.ts';
 
-// Initialize the service
+// Initialize the service with typed dependencies
 const userService = createUserService({
-
-  // Provide Dependencies
+  // Provide Dependencies that match UserManagerDependencies interface
   userRepository: {
     save: async (user: any) => {
       // Simulate database save
@@ -22,6 +21,19 @@ const userService = createUserService({
       }
       return null;
     },
+    findById: async (id: string) => {
+      // Simulate database lookup by ID
+      console.log('Finding user by ID:', id);
+      return null;
+    },
+    update: async (id: string, updates: any) => {
+      // Simulate database update
+      console.log('Updating user:', id, updates);
+    },
+    delete: async (id: string) => {
+      // Simulate database deletion
+      console.log('Deleting user:', id);
+    },
   },
   idGenerator: {
     generate: () => `usr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -29,6 +41,8 @@ const userService = createUserService({
   logger: {
     info: (message: string, data?: any) => console.log(`[INFO] ${message}`, data),
     error: (message: string, error: Error) => console.error(`[ERROR] ${message}`, error),
+    warn: (message: string, data?: any) => console.warn(`[WARN] ${message}`, data),
+    debug: (message: string, data?: any) => console.debug(`[DEBUG] ${message}`, data),
   },
 });
 

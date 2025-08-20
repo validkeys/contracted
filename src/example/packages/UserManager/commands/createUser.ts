@@ -1,48 +1,17 @@
-import { z } from 'zod';
 import { ok, err } from 'neverthrow';
-import { defineContract } from '../../../../core/defineContract.ts';
 import { 
+  createUserContract,
   UserAlreadyExistsError,
   UserRepositoryError,
   InvalidUserDataError,
-  createUserErrors
-} from '../internal/errors.ts';
+} from '../../contracts/UserManager/index.ts';
 
-// Define the contract with specific error types
-const createUserContract = defineContract({
-  input: z.object({
-    email: z.string().email(),
-    name: z.string().min(1).max(100),
-    age: z.number().min(18).max(120),
-  }),
-  output: z.object({
-    id: z.string(),
-    email: z.string(),
-    name: z.string(),
-    age: z.number(),
-    createdAt: z.date(),
-  }),
-  dependencies: {
-    userRepository: {} as {
-      save: (user: any) => Promise<void>;
-      findByEmail: (email: string) => Promise<any | null>;
-    },
-    idGenerator: {} as {
-      generate: () => string;
-    },
-    logger: {} as {
-      info: (message: string, data?: any) => void;
-      error: (message: string, error: Error) => void;
-    },
-  },
-  options: {} as {
-    skipDuplicateCheck?: boolean;
-    sendWelcomeEmail?: boolean;
-  },
-  errors: createUserErrors,
-});
-
-// Implement the command with typed errors
+/**
+ * Implementation of the createUser command.
+ * 
+ * This command creates a new user with validation, duplicate checking,
+ * and proper error handling.
+ */
 export const createUser = createUserContract.implementation(async ({ input, deps, options }) => {
   try {
     deps.logger.info('Creating user', { email: input.email });
