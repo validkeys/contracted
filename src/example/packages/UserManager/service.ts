@@ -1,4 +1,4 @@
-import { serviceFrom } from '../../core/serviceFrom.ts';
+import { serviceFrom } from '../../../core/serviceFrom.ts';
 import { createUser } from './commands/createUser.ts';
 // Import other commands as you create them
 // import { deleteUser } from '../commands/deleteUser';

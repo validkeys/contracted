@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ok, err } from 'neverthrow';
-import { defineContract } from '../../../core/defineContract.ts';
+import { defineContract } from '../../../../core/defineContract.ts';
 import { 
   UserAlreadyExistsError,
   UserRepositoryError,

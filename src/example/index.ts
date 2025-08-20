@@ -1,5 +1,5 @@
 import { createUserService } from './packages/UserManager/service.ts';
-import { matchError } from './core/errors.ts';
+import { matchError } from '../core/errors.ts';
 import { 
   UserAlreadyExistsError,
   UserRepositoryError,

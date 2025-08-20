@@ -1,4 +1,4 @@
-import { defineError } from '../../../core/errors.ts';
+import { defineError } from '../../../../core/errors.ts';
 
 // Correct usage: create error classes by calling defineError with tag, message, and type parameter.
 export const UserAlreadyExistsError = defineError<'USER_ALREADY_EXISTS', { email: string }>(
