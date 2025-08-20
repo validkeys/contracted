@@ -1,4 +1,4 @@
-import { createUserService } from './packages/UserManager/UserService.ts';
+import { createUserService } from './packages/UserManager/service.ts';
 import { matchError } from './core/errors.ts';
 import { 
   UserAlreadyExistsError,
@@ -8,6 +8,8 @@ import {
 
 // Initialize the service
 const userService = createUserService({
+
+  // Provide Dependencies
   userRepository: {
     save: async (user: any) => {
       // Simulate database save
