@@ -143,12 +143,7 @@ export const createUserErrors = [
 Create contracts that specify interfaces and dependencies in your contracts package:
 
 ```typescript
-// src/packages/contracts/UserManager/contracts.ts
-import { z } from 'zod';
-import { defineContract } from './core/defineContract';
-import { createUserErrors } from './errors';
-
-// Define dependency interfaces
+// src/packages/contracts/infrastructure.ts
 export interface UserRepository {
   save: (user: any) => Promise<void>;
   findByEmail: (email: string) => Promise<any | null>;
@@ -163,6 +158,12 @@ export interface Logger {
   info: (message: string, data?: any) => void;
   error: (message: string, error: Error) => void;
 }
+
+// src/packages/contracts/UserManager/contracts.ts
+import { z } from 'zod';
+import { defineContract } from './core/defineContract';
+import { createUserErrors } from './errors';
+import { UserRepository, IdGenerator, Logger } from '../infrastructure';
 
 // Define the contract
 export const createUserContract = defineContract({
@@ -507,6 +508,7 @@ src/
     ├── index.ts                   # Example usage
     └── packages/
         ├── contracts/             # Contract definitions (interfaces)
+        │   ├── infrastructure.ts  # Shared infrastructure interfaces
         │   └── UserManager/
         │       ├── contracts.ts   # Service contracts
         │       ├── errors.ts      # Error definitions
@@ -524,9 +526,12 @@ The Service Command architecture uses a clean separation between contracts and i
 
 ### Contracts Package (`contracts/`)
 - **Purpose**: Defines interfaces, types, and error definitions
-- **Contents**: Service contracts, dependency interfaces, error types
+- **Contents**: 
+  - `infrastructure.ts`: Shared infrastructure interfaces (Logger, Repository, etc.)
+  - Service-specific contracts and error definitions
 - **Benefits**: 
   - Clear API definitions independent of implementation
+  - Shared infrastructure interfaces across services
   - Easy to share between teams
   - Enables contract-first development
   - Facilitates testing with mocks
