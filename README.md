@@ -1,4 +1,4 @@
-# Service Command Architecture
+# Contracted
 
 A TypeScript library for building type-safe, composable services using a contract-first approach. Define your operations with clear inputs, outputs, dependencies, and error types, then compose them into services with automatic dependency injection.
 
@@ -21,9 +21,19 @@ A TypeScript library for building type-safe, composable services using a contrac
 ## Installation
 
 ```bash
+npm install @validkeys/contracted
+# or
+pnpm add @validkeys/contracted
+# or
+yarn add @validkeys/contracted
+```
+
+Contracted has peer dependencies on `neverthrow` and `zod`:
+
+```bash
 npm install neverthrow zod
 # or
-pnpm add neverthrow zod
+pnpm add neverthrow zod  
 # or
 yarn add neverthrow zod
 ```
@@ -53,7 +63,7 @@ Type-safe error handling using discriminated unions, enabling exhaustive pattern
 
 ```typescript
 import { z } from 'zod';
-import { defineContract, defineError, serviceFrom } from './core';
+import { defineContract, defineError, serviceFrom } from '@validkeys/contracted';
 import { ok, err } from 'neverthrow';
 
 // 1. Define errors
