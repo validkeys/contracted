@@ -64,7 +64,7 @@ Type-safe error handling using discriminated unions, enabling exhaustive pattern
 
 ```typescript
 import { z } from 'zod';
-import { defineContract, defineError, serviceFrom } from '@validkeys/contracted';
+import { defineContract, defineError, defineService } from '@validkeys/contracted';
 import { ok, err } from 'neverthrow';
 
 // 1. Define errors
@@ -87,7 +87,16 @@ const getUserContract = defineContract({
   errors: [UserNotFoundError] as const
 });
 
-// 3. Implement the contract
+// 3. Define service contract
+const userServiceContract = defineService({
+  getUser: getUserContract
+});
+
+// Types available immediately
+type UserService = typeof userServiceContract.types.Service;
+type UserServiceDeps = typeof userServiceContract.types.Dependencies;
+
+// 4. Implement the service contract
 const getUser = getUserContract.implementation(async ({ input, deps }) => {
   const user = await deps.userRepo.findById(input.userId);
   if (!user) {
@@ -96,8 +105,9 @@ const getUser = getUserContract.implementation(async ({ input, deps }) => {
   return ok(user);
 });
 
-// 4. Create service
-const createUserService = serviceFrom({ getUser });
+const createUserService = userServiceContract.implementation({
+  getUser
+});
 
 // 5. Use the service
 const userService = createUserService({
@@ -107,7 +117,7 @@ const userService = createUserService({
 const result = await userService.getUser.run({ userId: '123' });
 ```
 
-> **Note:** For large applications with multiple packages, consider using [`defineService`](#service-contracts) to create service contracts that provide types before implementation exists.
+> **Note:** For simple applications, you can also use [`serviceFrom`](#service-variants) to create services directly from implementations without service contracts.
 
 ## Step-by-Step Guide
 
