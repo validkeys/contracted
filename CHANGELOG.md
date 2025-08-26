@@ -1,5 +1,11 @@
 # @validkeys/contracted
 
+## 3.0.3
+
+### Patch Changes
+
+- Fix missing unsafeImplementation method in published types - rebuilt dist folder to include latest TypeScript definitions
+
 ## 3.0.2
 
 ### Patch Changes
