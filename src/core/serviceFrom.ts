@@ -44,7 +44,7 @@ type ExtractErrors<T> = T extends ImplementedContract<any, any, any, any, infer 
  * // { userRepo: UserRepository } & { userRepo: UserRepository, auditService: AuditService }
  * ```
  */
-type MergeDependencies<T extends Record<string, ImplementedContract<any, any, any, any, any>>> = {
+export type MergeDependencies<T extends Record<string, ImplementedContract<any, any, any, any, any>>> = {
   [K in keyof T]: ExtractDependencies<T[K]>
 }[keyof T];
 
@@ -62,7 +62,7 @@ type MergeDependencies<T extends Record<string, ImplementedContract<any, any, an
  * // UserAlreadyExistsError | UserNotFoundError | ValidationError
  * ```
  */
-type MergeErrors<T extends Record<string, ImplementedContract<any, any, any, any, any>>> = 
+export type MergeErrors<T extends Record<string, ImplementedContract<any, any, any, any, any>>> = 
   ErrorUnion<ExtractErrors<T[keyof T]>>;
 
 /**
@@ -73,7 +73,7 @@ type MergeErrors<T extends Record<string, ImplementedContract<any, any, any, any
  * 
  * @template T - Record of contract names to implemented contracts
  */
-type ServiceWithContracts<T extends Record<string, ImplementedContract<any, any, any, any, any>>> = {
+export type ServiceWithContracts<T extends Record<string, ImplementedContract<any, any, any, any, any>>> = {
   [K in keyof T]: T[K] extends ImplementedContract<infer TInput, infer TOutput, infer TDeps, infer TOptions, infer TErrors>
     ? Omit<T[K], 'run' | 'withDependencies'> & {
         run: CurriedImplementation<z.infer<TInput>, z.infer<TOutput>, TOptions, ErrorUnion<TErrors>>;
@@ -89,7 +89,7 @@ type ServiceWithContracts<T extends Record<string, ImplementedContract<any, any,
  * 
  * @template T - Record of contract names to implemented contracts
  */
-type CurriedService<T extends Record<string, ImplementedContract<any, any, any, any, any>>> = {
+export type CurriedService<T extends Record<string, ImplementedContract<any, any, any, any, any>>> = {
   [K in keyof T]: T[K] extends ImplementedContract<infer TInput, infer TOutput, any, infer TOptions, infer TErrors>
     ? CurriedImplementation<z.infer<TInput>, z.infer<TOutput>, TOptions, ErrorUnion<TErrors>>
     : never

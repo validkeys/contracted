@@ -10,3 +10,6 @@ export * from './errors.ts';
 
 // Export all contracts and types
 export * from './contracts.ts';
+
+// Export service contract and types
+export * from './service.ts';

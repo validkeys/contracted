@@ -13,6 +13,7 @@ A TypeScript library for building type-safe, composable services using a contrac
   - [3. Implement the Contract](#3-implement-the-contract)
   - [4. Create a Service](#4-create-a-service)
   - [5. Use the Service](#5-use-the-service)
+- [Service Contracts](#service-contracts)
 - [Error Handling](#error-handling)
 - [Advanced Features](#advanced-features)
 - [API Reference](#api-reference)
@@ -105,6 +106,8 @@ const userService = createUserService({
 
 const result = await userService.getUser.run({ userId: '123' });
 ```
+
+> **Note:** For large applications with multiple packages, consider using [`defineService`](#service-contracts) to create service contracts that provide types before implementation exists.
 
 ## Step-by-Step Guide
 
@@ -316,6 +319,65 @@ if (result.isOk()) {
 }
 ```
 
+## Service Contracts
+
+For large applications with multiple packages, you can define service contracts that provide types before implementation exists. This enables clean separation between contract definition and implementation across package boundaries, following the same `define → implementation` pattern as individual contracts.
+
+### Define Service Contract
+```typescript
+// contracts/UserManager/service.ts
+import { defineService } from '@validkeys/contracted';
+import { createUserContract, updateUserContract, deleteUserContract } from './contracts';
+
+export const userManagerServiceContract = defineService({
+  createUser: createUserContract,
+  updateUser: updateUserContract,
+  deleteUser: deleteUserContract
+});
+
+// Types available immediately for other packages
+export type UserManagerService = typeof userManagerServiceContract.types.Service;
+export type UserManagerDependencies = typeof userManagerServiceContract.types.Dependencies;
+export type UserManagerErrors = typeof userManagerServiceContract.types.Errors;
+```
+
+### Implement Service Contract
+```typescript
+// packages/UserManager/service.ts
+import { userManagerServiceContract } from '../../contracts/UserManager/service';
+import { createUser, updateUser, deleteUser } from './commands';
+
+export const createUserManagerService = userManagerServiceContract.implementation({
+  createUser,
+  updateUser,
+  deleteUser
+});
+
+// Type matches the contract exactly
+export type UserService = typeof userManagerServiceContract.types.Service;
+```
+
+### Use Service Types Across Packages
+```typescript
+// packages/PackageA/handlers.ts
+import type { UserManagerService } from '../../contracts/UserManager/service';
+
+// Package A can depend on service type without importing implementation
+export class UserHandler {
+  constructor(private userService: UserManagerService) {}
+  
+  async handleCreateUser(data: any) {
+    return this.userService.createUser.run(data);
+  }
+}
+```
+
+This pattern enables:
+- **Type availability before implementation**: Service types available in contracts folder
+- **Clean package boundaries**: Packages depend on contracts, not implementations
+- **Consistent API**: Same `define → implementation` pattern as contracts
+- **Better architecture**: Interface segregation across package boundaries
+
 ## Error Handling
 
 The architecture provides type-safe error handling through tagged errors:
@@ -486,6 +548,14 @@ Creates a service factory with full contract metadata.
 #### `serviceFromSimple<T>(commands)`  
 Creates a simplified service factory with only execution functions.
 
+#### `defineService<T>(contracts)`
+Creates a service contract definition from individual contracts.
+
+**Parameters:**
+- `contracts: Record<string, Contract>` - Object mapping command names to contract definitions
+
+**Returns:** `ServiceContract<T>` - Service contract with types and implementation method
+
 #### `matchError<TError, TResult>(error, handlers)`
 Provides exhaustive pattern matching for tagged errors.
 
@@ -496,6 +566,9 @@ Base contract interface without implementation.
 
 #### `ImplementedContract<TInput, TOutput, TDeps, TOptions, TErrors>`
 Contract interface with implementation and execution methods.
+
+#### `ServiceContract<T>`
+Service contract interface that provides types before implementation exists.
 
 #### `TaggedError<TTag>`
 Base class for all tagged errors.
@@ -508,15 +581,17 @@ Creates discriminated union from error constructor array.
 The `src/example` folder contains a complete example showing:
 
 - **User Management Service**: Creating, updating, and deleting users
+- **Service Contracts**: Using `defineService` for type-safe service definitions
 - **Error Handling**: Comprehensive error scenarios
 - **Service Composition**: Building services from multiple commands
-- **HTTP Integration**: Using services in web applications
+- **Cross-Package Types**: Type safety across package boundaries
 
 ### File Structure
 ```
 src/
 ├── core/                           # Core library code
 │   ├── defineContract.ts           # Contract definition
+│   ├── defineService.ts           # Service contract definition
 │   ├── errors.ts                  # Error handling utilities
 │   ├── serviceFrom.ts             # Service composition
 │   └── types.ts                   # Type definitions
@@ -526,7 +601,8 @@ src/
         ├── contracts/             # Contract definitions (interfaces)
         │   ├── infrastructure.ts  # Shared infrastructure interfaces
         │   └── UserManager/
-        │       ├── contracts.ts   # Service contracts
+        │       ├── contracts.ts   # Individual contracts
+        │       ├── service.ts     # Service contract definition
         │       ├── errors.ts      # Error definitions
         │       └── index.ts       # Package exports
         └── UserManager/           # Implementation package

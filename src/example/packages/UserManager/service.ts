@@ -1,5 +1,4 @@
-import { serviceFrom } from '../../../core/serviceFrom.ts';
-import { createUserContract } from '../contracts/UserManager/index.ts';
+import { userManagerServiceContract, UserManagerService, UserManagerDependencies } from '../contracts/UserManager/service.ts';
 import { createUser } from './commands/createUser.ts';
 // Import other commands as you create them
 // import { deleteUser } from './commands/deleteUser.ts';
@@ -8,10 +7,10 @@ import { createUser } from './commands/createUser.ts';
 /**
  * Creates a UserManager service with the provided dependencies.
  * 
- * This service provides user management operations including creation,
- * updating, deletion, and retrieval of users.
+ * This service implements the UserManagerServiceContract and provides 
+ * user management operations including creation, updating, deletion, and retrieval of users.
  */
-export const createUserService = serviceFrom({
+export const createUserService = userManagerServiceContract.implementation({
   createUser,
   // Add other commands here
   // deleteUser,
@@ -20,13 +19,13 @@ export const createUserService = serviceFrom({
 
 /**
  * Type for the UserManager service instance
- * Useful for dependency injection and testing
+ * Imported from the service contract for consistency
  */
-export type UserService = ReturnType<typeof createUserService>;
+export type UserService = UserManagerService;
 
 /**
  * Type for the dependencies required by the UserManager service
- * Extracted from the contract's dependency type
+ * Imported from the service contract for consistency
  */
-export type UserManagerDependencies = typeof createUserContract.types.Dependencies;
+export type { UserManagerDependencies };
 

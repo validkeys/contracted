@@ -1,4 +1,8 @@
-import { createUserService, UserManagerDependencies } from './packages/UserManager/index.ts';
+// NEW APPROACH: Using defineService
+// Service types are imported from contracts folder, implementation from packages
+import { createUserService } from './packages/UserManager/index.ts';
+import type { UserManagerService, UserManagerDependencies } from './packages/contracts/UserManager/service.ts';
+
 import { matchError } from '../core/errors.ts';
 import { 
   UserAlreadyExistsError,
@@ -7,7 +11,8 @@ import {
 } from './packages/contracts/UserManager/index.ts';
 
 // Initialize the service with typed dependencies
-const userService = createUserService({
+// The service type matches the contract definition exactly
+const userService: UserManagerService = createUserService({
   // Provide Dependencies that match UserManagerDependencies interface
   userRepository: {
     save: async (user: any) => {
