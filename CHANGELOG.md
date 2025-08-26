@@ -1,5 +1,18 @@
 # @validkeys/contracted
 
+## 2.0.1
+
+### Patch Changes
+
+- Fix Quick Start example to showcase defineService as primary approach
+
+  - Updated Quick Start to use `defineService` instead of `serviceFrom`
+  - Shows complete service contract definition and implementation pattern
+  - Highlights immediate type availability after service contract definition
+  - References `serviceFrom` as alternative for simple applications
+
+  The Quick Start now properly demonstrates the recommended approach for most applications.
+
 ## 2.0.0
 
 ### Major Changes
