@@ -1,5 +1,41 @@
 # @validkeys/contracted
 
+## 3.0.0
+
+### Major Changes
+
+- BREAKING CHANGE: Rename `defineContract` to `defineCommand` for better naming consistency
+
+  - **New primary API**: `defineCommand` replaces `defineContract` for defining individual operations
+  - **Consistent naming**: `defineCommand` + `defineService` provides clear distinction between individual operations and service collections
+  - **Backwards compatibility**: `defineContract` is still available as a deprecated alias until v4.0.0
+  - **Updated examples**: All documentation and examples now use the new `defineCommand` API
+  - **Migration path**: Replace `defineContract` imports with `defineCommand` - functionality is identical
+
+  **Before:**
+
+  ```typescript
+  import { defineContract, defineService } from "@validkeys/contracted";
+
+  const getUserContract = defineContract({
+    /* ... */
+  });
+  const serviceContract = defineService({ getUser: getUserContract });
+  ```
+
+  **After:**
+
+  ```typescript
+  import { defineCommand, defineService } from "@validkeys/contracted";
+
+  const getUserCommand = defineCommand({
+    /* ... */
+  });
+  const serviceContract = defineService({ getUser: getUserCommand });
+  ```
+
+  This change provides better conceptual clarity: **Commands** define individual operations, **Services** define collections of operations.
+
 ## 2.0.1
 
 ### Patch Changes
