@@ -1,6 +1,6 @@
 import { ok, err } from 'neverthrow';
 import { 
-  createUserContract,
+  createUserCommand,
   UserAlreadyExistsError,
   UserRepositoryError,
   InvalidUserDataError,
@@ -12,7 +12,7 @@ import {
  * This command creates a new user with validation, duplicate checking,
  * and proper error handling.
  */
-export const createUser = createUserContract.implementation(async ({ input, deps, options }) => {
+export const createUser = createUserCommand.implementation(async ({ input, deps, options }) => {
   try {
     deps.logger.info('Creating user', { email: input.email });
 

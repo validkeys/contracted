@@ -1,5 +1,5 @@
 import { defineService } from '../../../../core/defineService';
-import { createUserContract } from './contracts';
+import { createUserCommand } from './contracts';
 
 /**
  * Service contract for the User Manager service.
@@ -9,7 +9,7 @@ import { createUserContract } from './contracts';
  * the User Manager service without importing the actual implementation.
  */
 export const userManagerServiceContract = defineService({
-  createUser: createUserContract,
+  createUser: createUserCommand,
 });
 
 // Export types for use in other packages

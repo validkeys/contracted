@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineContract } from '../../../../core/defineContract.ts';
+import { defineCommand } from '../../../../core/defineContract.ts';
 import { createUserErrors } from './errors.ts';
 import { 
   UserRepository, 
@@ -9,9 +9,9 @@ import {
 } from '../infrastructure.ts';
 
 /**
- * Contract for creating a new user
+ * Command for creating a new user
  */
-export const createUserContract = defineContract({
+export const createUserCommand = defineCommand({
   input: z.object({
     email: z.string().email(),
     name: z.string().min(1).max(100),
