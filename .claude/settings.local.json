@@ -10,7 +10,8 @@
       "Bash(pnpm test:*)",
       "Bash(pnpm version:*)",
       "Bash(sed:*)",
-      "Bash(npm test)"
+      "Bash(npm test)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []
