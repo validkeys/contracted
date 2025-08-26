@@ -1,5 +1,11 @@
 # @validkeys/contracted
 
+## 3.0.1
+
+### Patch Changes
+
+- f014a4f: Add defineContract tests and improve type definitions
+
 ## 3.0.0
 
 ### Major Changes
