@@ -1,5 +1,11 @@
 # @validkeys/contracted
 
+## 3.0.2
+
+### Patch Changes
+
+- ad76d70: Fix repository and homepage URLs to point to validkeys organization
+
 ## 3.0.1
 
 ### Patch Changes
