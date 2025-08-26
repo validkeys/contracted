@@ -9,10 +9,11 @@ A TypeScript library for building type-safe, composable services using a contrac
 - [Quick Start](#quick-start)
 - [Step-by-Step Guide](#step-by-step-guide)
   - [1. Define Errors](#1-define-errors)
-  - [2. Define a Contract](#2-define-a-contract)
-  - [3. Implement the Contract](#3-implement-the-contract)
-  - [4. Create a Service](#4-create-a-service)
-  - [5. Use the Service](#5-use-the-service)
+  - [2. Define a Command](#2-define-a-command)
+  - [3. Define a Service](#3-define-a-service)
+  - [4. Implement the Command](#4-implement-the-command)
+  - [5. Implement the Service](#5-implement-the-service)
+  - [6. Use the Service](#6-use-the-service)
 - [Service Contracts](#service-contracts)
 - [Error Handling](#error-handling)
 - [Advanced Features](#advanced-features)
@@ -43,7 +44,7 @@ yarn add neverthrow zod
 
 The Service Command architecture is built around four key concepts:
 
-### 🔒 **Contracts**
+### 🔒 **Commands**
 Define the interface for an operation including:
 - **Input schema** (Zod validation)
 - **Output schema** (Zod validation) 
@@ -51,8 +52,8 @@ Define the interface for an operation including:
 - **Options** (optional configuration)
 - **Errors** (typed error conditions)
 
-### ⚡ **Commands**
-Implemented contracts that contain the actual business logic. Commands are pure functions that receive validated input and dependencies.
+### ⚡ **Implementations**
+Implemented commands that contain the actual business logic. Implementations are pure functions that receive validated input and dependencies.
 
 ### 🏗️ **Services** 
 Collections of related commands with shared dependencies. Services provide a clean API for executing multiple operations.
@@ -64,8 +65,7 @@ Type-safe error handling using discriminated unions, enabling exhaustive pattern
 
 ```typescript
 import { z } from 'zod';
-import { defineContract, defineError, defineService } from '@validkeys/contracted';
-import { ok, err } from 'neverthrow';
+import { defineCommand, defineError, defineService } from '@validkeys/contracted';
 
 // 1. Define errors
 const UserNotFoundError = defineError<'USER_NOT_FOUND', { userId: string }>(
@@ -73,8 +73,8 @@ const UserNotFoundError = defineError<'USER_NOT_FOUND', { userId: string }>(
   'User not found'
 );
 
-// 2. Define contract
-const getUserContract = defineContract({
+// 2. Define command
+const getUserCommand = defineCommand({
   input: z.object({ userId: z.string() }),
   output: z.object({ 
     id: z.string(), 
@@ -89,20 +89,20 @@ const getUserContract = defineContract({
 
 // 3. Define service contract
 const userServiceContract = defineService({
-  getUser: getUserContract
+  getUser: getUserCommand
 });
 
 // Types available immediately
 type UserService = typeof userServiceContract.types.Service;
 type UserServiceDeps = typeof userServiceContract.types.Dependencies;
 
-// 4. Implement the service contract
-const getUser = getUserContract.implementation(async ({ input, deps }) => {
+// 4. Implement the service contract (using the new auto-wrapped implementation)
+const getUser = getUserCommand.implementation(async ({ input, deps }) => {
   const user = await deps.userRepo.findById(input.userId);
   if (!user) {
-    return err(new UserNotFoundError({ userId: input.userId }));
+    throw new UserNotFoundError({ userId: input.userId });
   }
-  return ok(user);
+  return user; // Automatically wrapped in ok() 
 });
 
 const createUserService = userServiceContract.implementation({
@@ -161,9 +161,9 @@ export const createUserErrors = [
 ] as const;
 ```
 
-### 2. Define Contracts
+### 2. Define Commands
 
-Create contracts that specify interfaces and dependencies in your contracts package:
+Create commands that specify interfaces and dependencies in your contracts package:
 
 ```typescript
 // src/packages/contracts/infrastructure.ts
@@ -184,12 +184,12 @@ export interface Logger {
 
 // src/packages/contracts/UserManager/contracts.ts
 import { z } from 'zod';
-import { defineContract } from './core/defineContract';
+import { defineCommand } from './core/defineCommand';
 import { createUserErrors } from './errors';
 import { UserRepository, IdGenerator, Logger } from '../infrastructure';
 
-// Define the contract
-export const createUserContract = defineContract({
+// Define the command
+export const createUserCommand = defineCommand({
   input: z.object({
     email: z.string().email(),
     name: z.string().min(1).max(100),
@@ -215,87 +215,120 @@ export const createUserContract = defineContract({
 });
 ```
 
-### 3. Implement the Contract
+### 3. Define a Service
+
+Create a service contract that groups related commands:
+
+```typescript
+// src/packages/contracts/UserManager/service.ts
+import { defineService } from '@validkeys/contracted';
+import { createUserCommand } from './contracts';
+
+export const userManagerServiceContract = defineService({
+  createUser: createUserCommand,
+  // Add other commands here
+  // updateUser: updateUserCommand,
+  // deleteUser: deleteUserCommand,
+});
+
+// Export types for use in other packages
+export type UserManagerService = typeof userManagerServiceContract.types.Service;
+export type UserManagerDependencies = typeof userManagerServiceContract.types.Dependencies;
+export type UserManagerErrors = typeof userManagerServiceContract.types.Errors;
+```
+
+### 4. Implement the Command
 
 Add the business logic in your implementation package:
 
 ```typescript
 // src/packages/UserManager/commands/createUser.ts
-import { ok, err } from 'neverthrow';
 import { 
-  createUserContract,
+  createUserCommand,
   UserAlreadyExistsError,
   InvalidUserDataError,
   UserRepositoryError,
 } from '../../contracts/UserManager/index';
 
-export const createUser = createUserContract.implementation(
+export const createUser = createUserCommand.implementation(
   async ({ input, deps, options }) => {
-    try {
-      deps.logger.info('Creating user', { email: input.email });
+    deps.logger.info('Creating user', { email: input.email });
 
-      // Business logic validation
-      if (input.name.includes('@')) {
-        return err(new InvalidUserDataError({
-          field: 'name',
-          reason: 'Name cannot contain @ symbol'
-        }));
-      }
+    // Business logic validation - throw errors directly
+    if (input.name.includes('@')) {
+      throw new InvalidUserDataError({
+        field: 'name',
+        reason: 'Name cannot contain @ symbol'
+      });
+    }
 
-      // Check for existing user
-      if (!options?.skipDuplicateCheck) {
+    // Check for existing user
+    if (!options?.skipDuplicateCheck) {
+      try {
         const existingUser = await deps.userRepository.findByEmail(input.email);
         if (existingUser) {
-          return err(new UserAlreadyExistsError({ email: input.email }));
+          throw new UserAlreadyExistsError({ email: input.email });
         }
+      } catch (error) {
+        throw new UserRepositoryError({
+          operation: 'findByEmail',
+          details: error?.toString()
+        });
       }
+    }
 
-      // Create new user
-      const newUser = {
-        id: deps.idGenerator.generate(),
-        email: input.email,
-        name: input.name,
-        age: input.age,
-        createdAt: new Date(),
-      };
+    // Create new user
+    const newUser = {
+      id: deps.idGenerator.generate(),
+      email: input.email,
+      name: input.name,
+      age: input.age,
+      createdAt: new Date(),
+    };
 
+    // Save to repository
+    try {
       await deps.userRepository.save(newUser);
       deps.logger.info('User created successfully', { userId: newUser.id });
-
-      return ok(newUser);
+      
+      // Return the raw output - automatically wrapped in ok()
+      return newUser;
     } catch (error) {
       deps.logger.error('Failed to create user', error as Error);
-      return err(new UserRepositoryError({
-        operation: 'createUser',
+      throw new UserRepositoryError({
+        operation: 'save',
         details: error?.toString()
-      }));
+      });
     }
   }
 );
 ```
 
-### 4. Create a Service
+### 5. Implement the Service
 
-Compose multiple commands into a service in your implementation package:
+Create the service implementation using the service contract:
 
 ```typescript
 // src/packages/UserManager/service.ts
-import { serviceFrom } from './core/serviceFrom';
-import { UserManagerDependencies } from '../contracts/UserManager';
+import { userManagerServiceContract, UserManagerService, UserManagerDependencies } from '../contracts/UserManager/service';
 import { createUser } from './commands/createUser';
+// Import other command implementations
+// import { updateUser } from './commands/updateUser';
+// import { deleteUser } from './commands/deleteUser';
 
-export const createUserService = serviceFrom({
+export const createUserService = userManagerServiceContract.implementation({
   createUser,
-  // Add other commands here
-  // deleteUser,
+  // Add other command implementations here
   // updateUser,
+  // deleteUser,
 });
 
-export type UserService = ReturnType<typeof createUserService>;
+// Re-export types for convenience
+export type UserService = UserManagerService;
 export type { UserManagerDependencies };
 ```
 
-### 5. Use the Service
+### 6. Use the Service
 
 Initialize and use your service:
 
@@ -329,6 +362,82 @@ if (result.isOk()) {
 }
 ```
 
+## Implementation Methods
+
+Contracted provides two ways to implement commands, giving you flexibility in how you handle errors:
+
+### 1. `implementation()` - Auto-wrapped (Recommended)
+
+The default `implementation` method automatically wraps your return values and caught errors in neverthrow Results:
+
+```typescript
+const getUserCommand = defineCommand({
+  input: z.object({ userId: z.string() }),
+  output: z.object({ id: z.string(), name: z.string() }),
+  dependencies: {} as { userRepo: UserRepository },
+  errors: [UserNotFoundError] as const
+});
+
+// Auto-wrapped implementation - cleaner code
+const getUser = getUserCommand.implementation(async ({ input, deps }) => {
+  const user = await deps.userRepo.findById(input.userId);
+  if (!user) {
+    throw new UserNotFoundError({ userId: input.userId }); // Automatically wrapped in err()
+  }
+  return user; // Automatically wrapped in ok()
+});
+
+const result = await getUser.run({ input: { userId: '123' }, deps: { userRepo } });
+// result is Result<User, UserNotFoundError>
+```
+
+**Benefits:**
+- ✅ Cleaner, more readable code
+- ✅ Standard JavaScript error handling with `throw`
+- ✅ Automatic Result wrapping
+- ✅ TaggedErrors are caught and wrapped in `err()`
+- ✅ Unexpected errors are re-thrown for proper error handling
+
+### 2. `unsafeImplementation()` - Explicit Results
+
+For cases where you need full control over Result handling, use `unsafeImplementation`:
+
+```typescript
+// Explicit Result handling
+const getUser = getUserCommand.unsafeImplementation(async ({ input, deps }) => {
+  const user = await deps.userRepo.findById(input.userId);
+  if (!user) {
+    return err(new UserNotFoundError({ userId: input.userId })); // Explicit err()
+  }
+  return ok(user); // Explicit ok()
+});
+
+const result = await getUser.run({ input: { userId: '123' }, deps: { userRepo } });
+// result is Result<User, UserNotFoundError>
+```
+
+**When to use `unsafeImplementation`:**
+- 🔧 Complex error transformation logic
+- 🔧 Fine-grained control over Result creation
+- 🔧 Migrating from existing Result-based code
+- 🔧 Performance-critical paths where you want explicit control
+
+### Consistent API
+
+Both methods produce identical `ImplementedContract` objects with the same API:
+
+```typescript
+// Both methods create contracts with identical interfaces
+const safeContract = command.implementation(/* ... */);
+const unsafeContract = command.unsafeImplementation(/* ... */);
+
+// Same API available on both:
+const result1 = await safeContract.run(context);
+const result2 = await unsafeContract.run(context);
+const curried1 = safeContract.withDependencies(deps);
+const curried2 = unsafeContract.withDependencies(deps);
+```
+
 ## Service Contracts
 
 For large applications with multiple packages, you can define service contracts that provide types before implementation exists. This enables clean separation between contract definition and implementation across package boundaries, following the same `define → implementation` pattern as individual contracts.
@@ -337,10 +446,10 @@ For large applications with multiple packages, you can define service contracts 
 ```typescript
 // contracts/UserManager/service.ts
 import { defineService } from '@validkeys/contracted';
-import { createUserContract, updateUserContract, deleteUserContract } from './contracts';
+import { createUserCommand, updateUserContract, deleteUserContract } from './contracts';
 
 export const userManagerServiceContract = defineService({
-  createUser: createUserContract,
+  createUser: createUserCommand,
   updateUser: updateUserContract,
   deleteUser: deleteUserContract
 });
@@ -479,9 +588,9 @@ const validOutput = userService.createUser.validateOutput(result.value);
 import { ServiceDependencies, ServiceErrors } from './core/serviceFrom';
 
 // Extract types from individual contracts
-type CreateUserInput = typeof createUserContract.types.Input;
-type CreateUserOutput = typeof createUserContract.types.Output;
-type CreateUserDeps = typeof createUserContract.types.Dependencies;
+type CreateUserInput = typeof createUserCommand.types.Input;
+type CreateUserOutput = typeof createUserCommand.types.Output;
+type CreateUserDeps = typeof createUserCommand.types.Dependencies;
 
 // Extract types from service collections
 type UserServiceDeps = ServiceDependencies<typeof userCommands>;
@@ -535,8 +644,8 @@ export async function createUserHandler(req: Request, res: Response) {
 
 ### Core Functions
 
-#### `defineContract<TInput, TOutput, TDeps, TOptions, TErrors>(params)`
-Creates a new contract definition.
+#### `defineCommand<TInput, TOutput, TDeps, TOptions, TErrors>(params)`
+Creates a new command definition.
 
 **Parameters:**
 - `input: z.ZodType` - Zod schema for input validation
@@ -544,6 +653,10 @@ Creates a new contract definition.
 - `dependencies: TDeps` - Type definition for dependencies
 - `options?: TOptions` - Optional configuration type
 - `errors?: TErrors` - Array of error constructors
+
+**Returns:** `Contract` with two implementation methods:
+- `implementation(impl)` - Auto-wrapped implementation (throws errors, returns raw output)
+- `unsafeImplementation(impl)` - Explicit Result handling (returns `Result<TOutput, TError>`)
 
 #### `defineError<TTag, TData>(tag, defaultMessage?)`
 Creates a tagged error class.
@@ -577,6 +690,12 @@ Base contract interface without implementation.
 #### `ImplementedContract<TInput, TOutput, TDeps, TOptions, TErrors>`
 Contract interface with implementation and execution methods.
 
+#### `ImplementationFunction<TInput, TOutput, TDeps, TOptions, TError>`
+Type for explicit Result-based implementation functions (used with `unsafeImplementation`).
+
+#### `UnsafeImplementationFunction<TInput, TOutput, TDeps, TOptions>`
+Type for auto-wrapped implementation functions (used with `implementation`).
+
 #### `ServiceContract<T>`
 Service contract interface that provides types before implementation exists.
 
@@ -600,7 +719,7 @@ The `src/example` folder contains a complete example showing:
 ```
 src/
 ├── core/                           # Core library code
-│   ├── defineContract.ts           # Contract definition
+│   ├── defineCommand.ts           # Contract definition
 │   ├── defineService.ts           # Service contract definition
 │   ├── errors.ts                  # Error handling utilities
 │   ├── serviceFrom.ts             # Service composition
@@ -650,15 +769,15 @@ The Service Command architecture uses a clean separation between contracts and i
 ### Usage Example
 ```typescript
 // Import contracts for type definitions
-import { createUserContract } from './contracts/UserManager';
+import { createUserCommand } from './contracts/UserManager';
 
 // Import implementation for actual usage
 import { createUserService } from './UserManager';
 
 // Access types from the contract
-type CreateUserInput = typeof createUserContract.types.Input;
-type CreateUserOutput = typeof createUserContract.types.Output;
-type UserManagerDeps = typeof createUserContract.types.Dependencies;
+type CreateUserInput = typeof createUserCommand.types.Input;
+type CreateUserOutput = typeof createUserCommand.types.Output;
+type UserManagerDeps = typeof createUserCommand.types.Dependencies;
 
 // Use with full type safety
 const service = createUserService(dependencies);

@@ -1,8 +1,10 @@
 import { z } from 'zod';
+import { ok, err } from 'neverthrow';
 import { ErrorUnion, TaggedError } from './errors';
 import {
   CurriedImplementation,
   ImplementationFunction,
+  UnsafeImplementationFunction,
   InferSchema
 } from './types';
 
@@ -135,8 +137,17 @@ export interface Contract<
   };
   /** Array of error constructors that this contract can throw */
   errors: TErrors;
-  /** Method to add an implementation to this contract */
+  /** Method to add an implementation to this contract (automatically wraps in neverthrow) */
   implementation: (
+    impl: UnsafeImplementationFunction<
+      InferSchema<TInput>,
+      InferSchema<TOutput>,
+      TDeps,
+      TOptions
+    >
+  ) => ImplementedContract<TInput, TOutput, TDeps, TOptions, TErrors>;
+  /** Method to add an unsafe implementation that requires explicit Result handling */
+  unsafeImplementation: (
     impl: ImplementationFunction<
       InferSchema<TInput>,
       InferSchema<TOutput>,
@@ -148,10 +159,10 @@ export interface Contract<
 }
 
 /**
- * Creates a new contract definition with the specified input/output schemas,
+ * Creates a new command definition with the specified input/output schemas,
  * dependencies, options, and possible error types.
  * 
- * This is the main entry point for defining contracts in the system. A contract
+ * This is the main entry point for defining commands in the system. A command
  * specifies the interface for an operation including its inputs, outputs,
  * dependencies, and error conditions.
  * 
@@ -161,19 +172,19 @@ export interface Contract<
  * @template TOptions - The options object type (defaults to empty record)
  * @template TErrors - Array of error constructor types (marked as const for literal types)
  * 
- * @param params - Configuration object for the contract
+ * @param params - Configuration object for the command
  * @param params.input - Zod schema for validating input data
  * @param params.output - Zod schema for validating output data
  * @param params.dependencies - Type definition for required dependencies
  * @param params.options - Optional type definition for configuration options
  * @param params.errors - Optional array of error constructors that can be thrown
  * 
- * @returns A contract instance that can be given an implementation
+ * @returns A command contract instance that can be given an implementation
  * 
  * @example
  * ```typescript
- * // Basic contract
- * const createUserContract = defineContract({
+ * // Basic command
+ * const createUserCommand = defineCommand({
  *   input: z.object({
  *     name: z.string(),
  *     email: z.string().email()
@@ -189,7 +200,7 @@ export interface Contract<
  * });
  * 
  * // Add implementation
- * const implementedContract = createUserContract.implementation(
+ * const implementedCommand = createUserCommand.implementation(
  *   async ({ input, deps, options }) => {
  *     // Implementation logic here
  *     return ok(createdUser);
@@ -197,7 +208,7 @@ export interface Contract<
  * );
  * ```
  */
-export function defineContract<
+export function defineCommand<
   TInput extends z.ZodType,
   TOutput extends z.ZodType,
   TDeps extends Record<string, any>,
@@ -233,6 +244,39 @@ export function defineContract<
     },
     errors,
     implementation: (impl) => {
+      // Wrap the unsafe implementation function to handle errors automatically
+      const wrappedImpl: ImplementationFunction<
+        InferSchema<TInput>,
+        InferSchema<TOutput>,
+        TDeps,
+        TOptions,
+        ErrorUnion<TErrors>
+      > = async (context) => {
+        try {
+          const result = await impl(context);
+          return ok(result);
+        } catch (error) {
+          // If it's already a TaggedError, return it as an error
+          if (error && typeof error === 'object' && '_tag' in error) {
+            return err(error as ErrorUnion<TErrors>);
+          }
+          // Otherwise, re-throw as this is an unexpected error
+          throw error;
+        }
+      };
+
+      const implementedContract: ImplementedContract<TInput, TOutput, TDeps, TOptions, TErrors> = {
+        ...contract,
+        run: wrappedImpl,
+        withDependencies: (deps: TDeps) => {
+          return (input, options) => wrappedImpl({ input, deps, options });
+        },
+        validateInput: (input: unknown) => params.input.parse(input),
+        validateOutput: (output: unknown) => params.output.parse(output),
+      };
+      return implementedContract;
+    },
+    unsafeImplementation: (impl) => {
       const implementedContract: ImplementedContract<TInput, TOutput, TDeps, TOptions, TErrors> = {
         ...contract,
         run: impl,
@@ -249,4 +293,9 @@ export function defineContract<
   return contract;
 }
 
-export type { CurriedImplementation }
+/**
+ * @deprecated Use `defineCommand` instead. This alias will be removed in v4.0.0
+ */
+export const defineContract = defineCommand;
+
+export type { CurriedImplementation, UnsafeImplementationFunction }

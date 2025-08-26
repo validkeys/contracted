@@ -50,7 +50,7 @@ export type ImplementationContext<
 };
 
 /**
- * Type definition for contract implementation functions.
+ * Type definition for contract implementation functions that return neverthrow Results.
  * 
  * Implementation functions receive a context object and return a Promise
  * that resolves to a Result containing either the output or an error.
@@ -84,6 +84,39 @@ export type ImplementationFunction<
 > = (
   context: ImplementationContext<TInput, TDeps, TOptions>
 ) => Promise<Result<TOutput, TError>>;
+
+/**
+ * Type definition for unsafe contract implementation functions that return raw outputs.
+ * 
+ * These functions can return the output directly or throw errors, which will be
+ * automatically wrapped in neverthrow Results by the contract system.
+ * 
+ * @template TInput - The input data type
+ * @template TOutput - The output data type
+ * @template TDeps - The dependencies object type
+ * @template TOptions - The options object type (defaults to empty record)
+ * 
+ * @example
+ * ```typescript
+ * const createUser: UnsafeImplementationFunction<
+ *   { name: string; email: string },
+ *   { id: string; name: string; email: string },
+ *   { userRepo: UserRepository },
+ *   { sendWelcomeEmail?: boolean }
+ * > = async ({ input, deps, options }) => {
+ *   // Can return output directly or throw errors
+ *   return createdUser; // or throw new MyError()
+ * };
+ * ```
+ */
+export type UnsafeImplementationFunction<
+  TInput,
+  TOutput,
+  TDeps extends Record<string, any>,
+  TOptions extends Record<string, any> = Record<string, never>
+> = (
+  context: ImplementationContext<TInput, TDeps, TOptions>
+) => Promise<TOutput>;
 
 /**
  * Type for a curried implementation function with dependencies already injected.

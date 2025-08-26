@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(pnpm add:*)",
-      "Bash(pnpm changeset:*)"
+      "Bash(pnpm changeset:*)",
+      "Bash(pnpm build:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx tsx:*)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm version:*)",
+      "Bash(sed:*)",
+      "Bash(npm test)"
     ],
     "deny": [],
     "ask": []
