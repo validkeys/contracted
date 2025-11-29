@@ -1,5 +1,34 @@
 # @validkeys/contracted
 
+## 3.0.4
+
+### Patch Changes
+
+- Fix MergeDependencies type to create intersection instead of union (fixes #5)
+
+  The `MergeDependencies` type was incorrectly creating a union of dependencies from different service commands instead of an intersection. This allowed TypeScript to accept incomplete dependency objects at service initialization, leading to runtime errors that should have been caught at compile time.
+
+  **What changed:**
+
+  - Added `UnionToIntersection` utility type
+  - Fixed `MergeDependencies` to properly merge all dependencies using intersection
+  - Added regression test using `expect-type` to prevent this bug from reoccurring
+
+  **Impact:**
+  Services with multiple commands that have different dependency requirements will now correctly require ALL dependencies from ALL commands. Code that was previously compiling with incomplete dependencies will now show TypeScript errors, preventing runtime crashes.
+
+  **Example:**
+
+  ```typescript
+  // Before (incorrect): Union allowed partial deps
+  type Deps = { db; serviceA; logger } | { db; logger };
+  // TypeScript accepted: { db, logger } ❌
+
+  // After (correct): Intersection requires all deps
+  type Deps = { db; serviceA; logger } & { db; logger };
+  // Simplified to: { db, serviceA, logger } ✅
+  ```
+
 ## 3.0.3
 
 ### Patch Changes

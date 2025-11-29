@@ -29,24 +29,43 @@ type ExtractDependencies<T> = T extends ImplementedContract<any, any, infer TDep
 type ExtractErrors<T> = T extends ImplementedContract<any, any, any, any, infer TErrors> ? TErrors : never;
 
 /**
+ * Utility type that converts a union type to an intersection type.
+ *
+ * This leverages TypeScript's contravariance in function parameter positions
+ * to transform union types into intersections.
+ *
+ * @template U - The union type to convert
+ *
+ * @example
+ * ```typescript
+ * type Union = { a: string } | { b: number };
+ * type Intersection = UnionToIntersection<Union>;
+ * // Result: { a: string } & { b: number }
+ * ```
+ */
+type UnionToIntersection<U> =
+  (U extends any ? (k: U) => void : never) extends
+  (k: infer I) => void ? I : never;
+
+/**
  * Helper type that merges all dependencies from multiple contracts into a single type.
- * 
- * This creates an intersection of all dependency types from the contracts in the service.
- * 
+ *
+ * This creates an intersection of all dependency types from the contracts in the service,
+ * ensuring that all dependencies required by any command are present.
+ *
  * @template T - Record of contract names to implemented contracts
- * 
+ *
  * @example
  * ```typescript
  * type AllDeps = MergeDependencies<{
- *   createUser: CreateUserContract,
- *   deleteUser: DeleteUserContract
+ *   createUser: CreateUserContract,  // requires: { userRepo: UserRepository, logger: Logger }
+ *   deleteUser: DeleteUserContract   // requires: { userRepo: UserRepository, auditService: AuditService }
  * }>;
- * // { userRepo: UserRepository } & { userRepo: UserRepository, auditService: AuditService }
+ * // Result: { userRepo: UserRepository, logger: Logger, auditService: AuditService }
  * ```
  */
-export type MergeDependencies<T extends Record<string, ImplementedContract<any, any, any, any, any>>> = {
-  [K in keyof T]: ExtractDependencies<T[K]>
-}[keyof T];
+export type MergeDependencies<T extends Record<string, ImplementedContract<any, any, any, any, any>>> =
+  UnionToIntersection<ExtractDependencies<T[keyof T]>>;
 
 /**
  * Helper type that merges all error types from multiple contracts into a union.

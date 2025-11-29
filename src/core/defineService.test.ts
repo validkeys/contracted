@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { ok, err } from 'neverthrow';
+import { expectTypeOf } from 'expect-type';
 import { defineService } from './defineService';
 import { defineCommand } from './defineContract';
 import { defineError } from './errors';
@@ -362,6 +363,100 @@ describe('defineService', () => {
       // These should all be type-safe at compile time
       expect(typeof service.getUser.run).toBe('function');
       expect(typeof service.createUser.run).toBe('function');
+    });
+  });
+
+  describe('MergeDependencies type correctness (issue #5)', () => {
+    it('should require ALL dependencies from all commands (intersection, not union)', () => {
+      // Command A requires: db, serviceA, logger
+      const commandA = defineCommand({
+        input: z.object({ value: z.string() }),
+        output: z.object({ result: z.string() }),
+        dependencies: {} as { db: Database; serviceA: ServiceA; logger: Logger },
+        errors: [] as const
+      });
+
+      // Command B requires: db, logger
+      const commandB = defineCommand({
+        input: z.object({ id: z.string() }),
+        output: z.object({ data: z.string() }),
+        dependencies: {} as { db: Database; logger: Logger },
+        errors: [] as const
+      });
+
+      // Command C requires: db, logger, cache
+      const commandC = defineCommand({
+        input: z.object({ key: z.string() }),
+        output: z.object({ value: z.string() }),
+        dependencies: {} as { db: Database; logger: Logger; cache: Cache },
+        errors: [] as const
+      });
+
+      const serviceContract = defineService({
+        doA: commandA,
+        doB: commandB,
+        doC: commandC
+      });
+
+      type ServiceDeps = typeof serviceContract.types.Dependencies;
+
+      // Define the types for our dependencies
+      type Database = { query: (sql: string) => Promise<any> };
+      type Logger = { log: (msg: string) => void };
+      type ServiceA = { doSomething: (v: string) => string };
+      type Cache = { get: (key: string) => any };
+
+      // Type test: The merged dependencies SHOULD equal the intersection of all deps
+      // Expected: { db: Database; serviceA: ServiceA; logger: Logger; cache: Cache }
+      expectTypeOf<ServiceDeps>().toEqualTypeOf<{
+        db: Database;
+        serviceA: ServiceA;
+        logger: Logger;
+        cache: Cache;
+      }>();
+
+      // Direct runtime test: Try to create service with incomplete deps
+      // This demonstrates the bug - TypeScript currently allows this but shouldn't
+      const doAImpl = commandA.implementation(async ({ input, deps }) => {
+        const result = deps.serviceA.doSomething(input.value);
+        return { result };
+      });
+
+      const doBImpl = commandB.implementation(async ({ input }) => {
+        return { data: 'test' };
+      });
+
+      const doCImpl = commandC.implementation(async ({ input }) => {
+        return { value: 'cached' };
+      });
+
+      const createService = serviceContract.implementation({
+        doA: doAImpl,
+        doB: doBImpl,
+        doC: doCImpl
+      });
+
+      // BUG DEMONSTRATION: This currently compiles but shouldn't
+      // Missing serviceA and cache, but TypeScript allows it because of union type
+      // @ts-expect-error - After fix, this line should error (missing serviceA and cache)
+      const serviceBuggy = createService({
+        db: { query: async () => {} } as Database,
+        logger: { log: () => {} } as Logger
+        // Missing: serviceA and cache
+      });
+
+      // This should be the only valid way to create the service
+      const serviceCorrect = createService({
+        db: { query: async () => {} } as Database,
+        logger: { log: () => {} } as Logger,
+        serviceA: { doSomething: (v) => v } as ServiceA,
+        cache: { get: () => null } as Cache
+      });
+
+      // Verify the correct service works
+      expect(typeof serviceCorrect.doA.run).toBe('function');
+      expect(typeof serviceCorrect.doB.run).toBe('function');
+      expect(typeof serviceCorrect.doC.run).toBe('function');
     });
   });
 });
