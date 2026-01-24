@@ -364,48 +364,73 @@ if (result.isOk()) {
 
 ## Implementation Methods
 
-Contracted provides two ways to implement commands, giving you flexibility in how you handle errors:
+Contracted provides two ways to implement commands, giving you flexibility in how you handle errors and validation:
 
-### 1. `implementation()` - Auto-wrapped (Recommended)
+### 1. `implementation()` - Auto-wrapped with Validation (Recommended)
 
-The default `implementation` method automatically wraps your return values and caught errors in neverthrow Results:
+The default `implementation` method automatically:
+- **Validates inputs** using your Zod schema before calling your implementation
+- **Applies Zod transformations** (trim, lowercase, defaults, etc.)
+- **Validates outputs** using your Zod schema before returning
+- **Wraps return values** in `ok()`
+- **Catches and wraps TaggedErrors** in `err()`
+- **Adds `ValidationError`** to your error union for invalid inputs/outputs
 
 ```typescript
 const getUserCommand = defineCommand({
-  input: z.object({ userId: z.string() }),
+  input: z.object({ userId: z.string().trim() }),
   output: z.object({ id: z.string(), name: z.string() }),
   dependencies: {} as { userRepo: UserRepository },
   errors: [UserNotFoundError] as const
 });
 
-// Auto-wrapped implementation - cleaner code
+// Auto-wrapped implementation - inputs are validated and transformed automatically
 const getUser = getUserCommand.implementation(async ({ input, deps }) => {
+  // input.userId is already validated and trimmed
   const user = await deps.userRepo.findById(input.userId);
   if (!user) {
     throw new UserNotFoundError({ userId: input.userId }); // Automatically wrapped in err()
   }
-  return user; // Automatically wrapped in ok()
+  return user; // Automatically validated and wrapped in ok()
 });
 
 const result = await getUser.run({ input: { userId: '123' }, deps: { userRepo } });
-// result is Result<User, UserNotFoundError>
+// result is Result<User, UserNotFoundError | ValidationError>
+
+if (result.isErr()) {
+  switch (result.error._tag) {
+    case 'VALIDATION_ERROR':
+      // Invalid input or output
+      console.error('Validation failed:', result.error.data.phase, result.error.data.errors);
+      break;
+    case 'USER_NOT_FOUND':
+      // Business logic error
+      console.error('User not found:', result.error.data.userId);
+      break;
+  }
+}
 ```
 
 **Benefits:**
-- ✅ Cleaner, more readable code
-- ✅ Standard JavaScript error handling with `throw`
-- ✅ Automatic Result wrapping
-- ✅ TaggedErrors are caught and wrapped in `err()`
-- ✅ Unexpected errors are re-thrown for proper error handling
+- ✅ **Automatic validation** - inputs and outputs are validated before/after your code runs
+- ✅ **Zod transformations applied** - defaults, trims, coercions, etc. work automatically
+- ✅ **Cleaner, more readable code** - no manual validation or Result wrapping
+- ✅ **Standard JavaScript error handling** with `throw`
+- ✅ **Type-safe error handling** - ValidationError is included in error union
+- ✅ **Unexpected errors are re-thrown** for proper error handling
 
-### 2. `unsafeImplementation()` - Explicit Results
+### 2. `unsafeImplementation()` - Explicit Results, No Validation
 
-For cases where you need full control over Result handling, use `unsafeImplementation`:
+For cases where you need full control over validation and Result handling, use `unsafeImplementation`:
 
 ```typescript
-// Explicit Result handling
+// Explicit Result handling - NO automatic validation
 const getUser = getUserCommand.unsafeImplementation(async ({ input, deps }) => {
-  const user = await deps.userRepo.findById(input.userId);
+  // No automatic validation - input might be invalid
+  // Manually validate if needed:
+  const validInput = getUserCommand.validateInput(input);
+  
+  const user = await deps.userRepo.findById(validInput.userId);
   if (!user) {
     return err(new UserNotFoundError({ userId: input.userId })); // Explicit err()
   }
@@ -413,23 +438,26 @@ const getUser = getUserCommand.unsafeImplementation(async ({ input, deps }) => {
 });
 
 const result = await getUser.run({ input: { userId: '123' }, deps: { userRepo } });
-// result is Result<User, UserNotFoundError>
+// result is Result<User, UserNotFoundError> (no ValidationError)
 ```
 
 **When to use `unsafeImplementation`:**
 - 🔧 Complex error transformation logic
-- 🔧 Fine-grained control over Result creation
+- 🔧 Fine-grained control over validation timing
+- 🔧 Performance-critical paths where you want to skip validation
+- 🔧 Custom validation logic beyond what Zod provides
 - 🔧 Migrating from existing Result-based code
-- 🔧 Performance-critical paths where you want explicit control
+
+**Important:** ValidationError is NOT added to the error union when using `unsafeImplementation`.
 
 ### Consistent API
 
-Both methods produce identical `ImplementedContract` objects with the same API:
+Both methods produce identical `ImplementedContract` objects with the same API (except for error types):
 
 ```typescript
 // Both methods create contracts with identical interfaces
-const safeContract = command.implementation(/* ... */);
-const unsafeContract = command.unsafeImplementation(/* ... */);
+const safeContract = command.implementation(/* ... */);        // Includes ValidationError
+const unsafeContract = command.unsafeImplementation(/* ... */); // No ValidationError
 
 // Same API available on both:
 const result1 = await safeContract.run(context);
@@ -499,15 +527,48 @@ This pattern enables:
 
 ## Error Handling
 
-The architecture provides type-safe error handling through tagged errors:
+The architecture provides type-safe error handling through tagged errors. When using `implementation()`, ValidationError is automatically added to handle schema validation failures.
+
+### Built-in ValidationError
+
+When using `implementation()`, the system automatically validates inputs and outputs. Invalid data returns a `ValidationError`:
+
+```typescript
+const createUser = createUserCommand.implementation(async ({ input, deps }) => {
+  // Implementation code
+  return user;
+});
+
+const result = await createUser.run({
+  input: { email: 'invalid', age: 15 },  // Invalid data
+  deps
+});
+
+if (result.isErr() && result.error._tag === 'VALIDATION_ERROR') {
+  console.log('Phase:', result.error.data.phase);  // 'input' or 'output'
+  console.log('Errors:', result.error.data.errors); // Array of Zod validation errors
+  
+  // Example error structure:
+  // {
+  //   path: ['email'],
+  //   message: 'Invalid email',
+  //   code: 'invalid_string'
+  // }
+}
+```
 
 ### Exhaustive Pattern Matching
 
 ```typescript
-import { matchError } from './core/errors';
+import { matchError } from '@validkeys/contracted';
 
 if (result.isErr()) {
   const response = matchError(result.error, {
+    VALIDATION_ERROR: (error) => ({
+      status: 400,
+      message: `Validation failed for ${error.data.phase}`,
+      errors: error.data.errors,
+    }),
     USER_ALREADY_EXISTS: (error) => ({
       status: 409,
       message: `User with email ${error.data.email} already exists`,
@@ -532,6 +593,10 @@ if (result.isErr()) {
 ```typescript
 if (result.isErr()) {
   switch (result.error._tag) {
+    case 'VALIDATION_ERROR':
+      // Handle schema validation errors
+      console.error('Validation failed:', result.error.data.errors);
+      break;
     case 'USER_ALREADY_EXISTS':
       // Handle duplicate user
       break;
@@ -569,13 +634,32 @@ const userService = serviceFromSimple(commands);
 
 ### Input/Output Validation
 
+When using `implementation()`, validation happens automatically:
+
 ```typescript
-// Validate input before processing
+const createUser = createUserCommand.implementation(async ({ input, deps }) => {
+  // input is already validated and transformed by Zod
+  // Zod transformations like .trim(), .default(), .transform() are applied
+  return user;
+});
+
+// Validation happens automatically
+const result = await createUser.run({ input: userData, deps });
+
+if (result.isErr() && result.error._tag === 'VALIDATION_ERROR') {
+  console.error('Invalid data:', result.error.data.errors);
+}
+```
+
+For manual validation or with `unsafeImplementation()`:
+
+```typescript
+// Validate input manually
 try {
   const validInput = userService.createUser.validateInput(req.body);
   const result = await userService.createUser.run(validInput);
 } catch (validationError) {
-  // Handle validation error
+  // Handle Zod validation error
 }
 
 // Validate output (useful for testing)

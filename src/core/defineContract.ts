@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ok, err } from 'neverthrow';
-import { ErrorUnion, TaggedError } from './errors';
+import { ErrorUnion, TaggedError, ValidationError, zodErrorToValidationError } from './errors';
 import {
   CurriedImplementation,
   ImplementationFunction,
@@ -19,6 +19,7 @@ import {
  * @template TDeps - The dependencies object type
  * @template TOptions - The options object type (defaults to empty record)
  * @template TErrors - Array of error constructor types that can be thrown
+ * @template TIncludesValidation - Whether ValidationError is included (default true)
  * 
  * @example
  * ```typescript
@@ -137,7 +138,40 @@ export interface Contract<
   };
   /** Array of error constructors that this contract can throw */
   errors: TErrors;
-  /** Method to add an implementation to this contract (automatically wraps in neverthrow) */
+  /** 
+   * Method to add an implementation to this contract.
+   * 
+   * This method automatically wraps your implementation function to:
+   * - Validate input using the input schema before calling your implementation
+   * - Apply Zod transformations (trim, lowercase, defaults, etc.) to inputs
+   * - Catch and wrap thrown TaggedErrors in Result.err()
+   * - Validate output using the output schema before returning
+   * - Apply Zod transformations to outputs
+   * - Wrap successful results in Result.ok()
+   * 
+   * If validation fails, returns Result.err() with ValidationError containing details.
+   * ValidationError is automatically added to the contract's error union.
+   * 
+   * @param impl - Your implementation function that receives validated input and returns raw output
+   * @returns An ImplementedContract with ValidationError included in the error union
+   * 
+   * @example
+   * ```typescript
+   * const createUser = createUserCommand.implementation(async ({ input, deps }) => {
+   *   // input is already validated and transformed
+   *   const user = await deps.userRepo.create(input);
+   *   // Just return the raw result - validation and Result wrapping is automatic
+   *   return user;
+   * });
+   * 
+   * const result = await createUser.run({ input: userData, deps });
+   * if (result.isErr()) {
+   *   if (result.error._tag === 'VALIDATION_ERROR') {
+   *     // Handle validation error
+   *   }
+   * }
+   * ```
+   */
   implementation: (
     impl: UnsafeImplementationFunction<
       InferSchema<TInput>,
@@ -145,8 +179,35 @@ export interface Contract<
       TDeps,
       TOptions
     >
-  ) => ImplementedContract<TInput, TOutput, TDeps, TOptions, TErrors>;
-  /** Method to add an unsafe implementation that requires explicit Result handling */
+  ) => ImplementedContract<TInput, TOutput, TDeps, TOptions, [...TErrors, typeof ValidationError]>;
+  /** 
+   * Method to add an unsafe implementation that requires explicit Result handling.
+   * 
+   * This method does NOT provide automatic validation - you must:
+   * - Validate inputs manually if needed
+   * - Return Result<Output, Error> explicitly (using ok() and err())
+   * - Handle all error cases yourself
+   * 
+   * Use this when you need full control over validation timing or want to
+   * skip validation for performance-critical code paths.
+   * 
+   * ValidationError is NOT added to the error union when using unsafeImplementation.
+   * 
+   * @param impl - Your implementation function that must return Result<Output, Error>
+   * @returns An ImplementedContract without ValidationError in the error union
+   * 
+   * @example
+   * ```typescript
+   * const createUser = createUserCommand.unsafeImplementation(async ({ input, deps }) => {
+   *   // Manually validate if needed
+   *   const validInput = createUserCommand.validateInput(input);
+   *   
+   *   const user = await deps.userRepo.create(validInput);
+   *   // Must explicitly return Result
+   *   return ok(user);
+   * });
+   * ```
+   */
   unsafeImplementation: (
     impl: ImplementationFunction<
       InferSchema<TInput>,
@@ -244,29 +305,67 @@ export function defineCommand<
     },
     errors,
     implementation: (impl) => {
-      // Wrap the unsafe implementation function to handle errors automatically
+      // Wrap the unsafe implementation function to handle errors automatically and add validation
       const wrappedImpl: ImplementationFunction<
         InferSchema<TInput>,
         InferSchema<TOutput>,
         TDeps,
         TOptions,
-        ErrorUnion<TErrors>
+        ErrorUnion<[...TErrors, typeof ValidationError]>
       > = async (context) => {
+        // STEP 1: Validate input before calling implementation
+        const inputValidation = params.input.safeParse(context.input);
+        if (!inputValidation.success) {
+          return err(zodErrorToValidationError(inputValidation.error, 'input') as ErrorUnion<[...TErrors, typeof ValidationError]>);
+        }
+
+        // Use validated and transformed input
+        const validatedContext = {
+          ...context,
+          input: inputValidation.data,
+        };
+
         try {
-          const result = await impl(context);
-          return ok(result);
+          // STEP 2: Call implementation with validated input
+          const result = await impl(validatedContext);
+
+          // STEP 3: Validate output before returning success
+          const outputValidation = params.output.safeParse(result);
+          if (!outputValidation.success) {
+            return err(zodErrorToValidationError(outputValidation.error, 'output') as ErrorUnion<[...TErrors, typeof ValidationError]>);
+          }
+
+          return ok(outputValidation.data);
         } catch (error) {
           // If it's already a TaggedError, return it as an error
           if (error && typeof error === 'object' && '_tag' in error) {
-            return err(error as ErrorUnion<TErrors>);
+            return err(error as ErrorUnion<[...TErrors, typeof ValidationError]>);
           }
           // Otherwise, re-throw as this is an unexpected error
           throw error;
         }
       };
 
-      const implementedContract: ImplementedContract<TInput, TOutput, TDeps, TOptions, TErrors> = {
-        ...contract,
+      const implementedContract: ImplementedContract<TInput, TOutput, TDeps, TOptions, [...TErrors, typeof ValidationError]> = {
+        schemas: {
+          input: params.input,
+          output: params.output,
+        },
+        errors: [...errors, ValidationError] as [...TErrors, typeof ValidationError],
+        types: {
+          Input: {} as InferSchema<TInput>,
+          Output: {} as InferSchema<TOutput>,
+          Dependencies: {} as TDeps,
+          Options: {} as TOptions,
+          Error: {} as ErrorUnion<[...TErrors, typeof ValidationError]>,
+          Implementation: {} as ImplementationFunction<
+            InferSchema<TInput>,
+            InferSchema<TOutput>,
+            TDeps,
+            TOptions,
+            ErrorUnion<[...TErrors, typeof ValidationError]>
+          >,
+        },
         run: wrappedImpl,
         withDependencies: (deps: TDeps) => {
           return (input, options) => wrappedImpl({ input, deps, options });
@@ -278,7 +377,25 @@ export function defineCommand<
     },
     unsafeImplementation: (impl) => {
       const implementedContract: ImplementedContract<TInput, TOutput, TDeps, TOptions, TErrors> = {
-        ...contract,
+        schemas: {
+          input: params.input,
+          output: params.output,
+        },
+        errors,
+        types: {
+          Input: {} as InferSchema<TInput>,
+          Output: {} as InferSchema<TOutput>,
+          Dependencies: {} as TDeps,
+          Options: {} as TOptions,
+          Error: {} as ErrorUnion<TErrors>,
+          Implementation: {} as ImplementationFunction<
+            InferSchema<TInput>,
+            InferSchema<TOutput>,
+            TDeps,
+            TOptions,
+            ErrorUnion<TErrors>
+          >,
+        },
         run: impl,
         withDependencies: (deps: TDeps) => {
           return (input, options) => impl({ input, deps, options });

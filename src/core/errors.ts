@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z, type ZodError } from 'zod';
 
 /**
  * Base class for all tagged errors in the contract system.
@@ -119,6 +119,45 @@ export function defineError<TTag extends string, TData extends Record<string, an
       super(message || defaultMessage || `Error: ${tag}`, cause);
     }
   };
+}
+
+/**
+ * System-level error thrown when input or output validation fails.
+ * This error is automatically added to all contracts using the `implementation()` method.
+ */
+export const ValidationError = defineError<
+  'VALIDATION_ERROR',
+  {
+    phase: 'input' | 'output';
+    errors: Array<{
+      path: (string | number)[];
+      message: string;
+      code: string;
+    }>;
+    message: string;
+  }
+>('VALIDATION_ERROR', 'Schema validation failed');
+
+/**
+ * Helper function to convert a ZodError to a ValidationError instance.
+ * 
+ * @param zodError - The ZodError from Zod validation
+ * @param phase - Whether this was input or output validation
+ * @returns A ValidationError instance with structured error data
+ */
+export function zodErrorToValidationError(
+  zodError: z.ZodError,
+  phase: 'input' | 'output'
+): InstanceType<typeof ValidationError> {
+  return new ValidationError({
+    phase,
+    errors: zodError.issues.map(e => ({
+      path: e.path.map(p => (typeof p === 'symbol' ? String(p) : p)),
+      message: e.message,
+      code: e.code,
+    })),
+    message: `${phase} validation failed: ${zodError.issues.map(e => e.message).join(', ')}`,
+  });
 }
 
 /**

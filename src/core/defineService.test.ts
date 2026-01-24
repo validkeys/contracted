@@ -366,6 +366,85 @@ describe('defineService', () => {
     });
   });
 
+  describe('automatic validation in services (TDD Phase 1)', () => {
+    // Test 9: Service commands should validate inputs
+    it('should validate inputs for service commands', async () => {
+      const strictCommand = defineCommand({
+        input: z.object({
+          email: z.string().email(),
+          age: z.number().min(18)
+        }),
+        output: z.object({ success: z.boolean() }),
+        dependencies: {} as Record<string, never>,
+        errors: [] as const
+      });
+
+      const serviceContract = defineService({
+        validateUser: strictCommand
+      });
+
+      let implementationWasCalled = false;
+      const validateUser = strictCommand.implementation(async () => {
+        implementationWasCalled = true;
+        return { success: true };
+      });
+
+      const createService = serviceContract.implementation({
+        validateUser
+      });
+
+      const service = createService({});
+
+      const result = await service.validateUser.run({
+        email: 'not-an-email',
+        age: 15
+      });
+
+      expect(result.isErr()).toBe(true);
+      expect(implementationWasCalled).toBe(false);
+      
+      if (result.isErr()) {
+        expect(result.error._tag).toBe('VALIDATION_ERROR');
+        expect(result.error.data.phase).toBe('input');
+      }
+    });
+
+    // Test 10: Service commands should validate outputs
+    it('should validate outputs for service commands', async () => {
+      const strictCommand = defineCommand({
+        input: z.object({ id: z.string() }),
+        output: z.object({
+          email: z.string().email(),
+          score: z.number().min(0).max(100)
+        }),
+        dependencies: {} as Record<string, never>,
+        errors: [] as const
+      });
+
+      const serviceContract = defineService({
+        getData: strictCommand
+      });
+
+      const getData = strictCommand.implementation(async () => {
+        return { email: 'invalid', score: 150 } as any;
+      });
+
+      const createService = serviceContract.implementation({
+        getData
+      });
+
+      const service = createService({});
+
+      const result = await service.getData.run({ id: '123' });
+
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) {
+        expect(result.error._tag).toBe('VALIDATION_ERROR');
+        expect(result.error.data.phase).toBe('output');
+      }
+    });
+  });
+
   describe('MergeDependencies type correctness (issue #5)', () => {
     it('should require ALL dependencies from all commands (intersection, not union)', () => {
       // Command A requires: db, serviceA, logger

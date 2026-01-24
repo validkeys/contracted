@@ -1,5 +1,113 @@
 # @validkeys/contracted
 
+## 4.0.0
+
+### Major Changes
+
+- **BREAKING CHANGE: Automatic input/output validation in `implementation()` method**
+
+  The `implementation()` method now automatically validates inputs and outputs using the defined Zod schemas. This aligns the actual behavior with the documented "automatic validation" feature and ensures runtime type safety.
+
+  ## What Changed
+
+  - **Input validation**: Inputs are validated and transformed BEFORE your implementation runs
+  - **Output validation**: Outputs are validated and transformed BEFORE returning success
+  - **ValidationError added**: A new `VALIDATION_ERROR` type is automatically added to all contracts using `implementation()`
+  - **Zod transformations applied**: `.trim()`, `.default()`, `.transform()`, etc. are now applied automatically
+  - **unsafeImplementation unchanged**: The `unsafeImplementation()` method skips validation (escape hatch)
+
+  ## Migration Guide
+
+  ### Option 1: Embrace automatic validation (Recommended)
+
+  ```typescript
+  // Before (v3.x): Manual validation required
+  const getUser = getUserCommand.implementation(async ({ input, deps }) => {
+    const validInput = getUserCommand.validateInput(input); // Manual
+    const user = await deps.userRepo.findById(validInput.userId);
+    if (!user) {
+      throw new UserNotFoundError({ userId: input.userId });
+    }
+    return user;
+  });
+
+  // After (v4.0.0): Automatic validation
+  const getUser = getUserCommand.implementation(async ({ input, deps }) => {
+    // input is already validated and transformed
+    const user = await deps.userRepo.findById(input.userId);
+    if (!user) {
+      throw new UserNotFoundError({ userId: input.userId });
+    }
+    return user;
+  });
+
+  // Handle validation errors
+  const result = await getUser.run({ input, deps });
+  if (result.isErr()) {
+    switch (result.error._tag) {
+      case "VALIDATION_ERROR":
+        console.error(
+          "Invalid:",
+          result.error.data.phase,
+          result.error.data.errors
+        );
+        break;
+      case "USER_NOT_FOUND":
+        console.error("Not found:", result.error.data.userId);
+        break;
+    }
+  }
+  ```
+
+  ### Option 2: Use unsafeImplementation() for full control
+
+  ```typescript
+  // No automatic validation - same behavior as v3.x
+  const getUser = getUserCommand.unsafeImplementation(
+    async ({ input, deps }) => {
+      const validInput = getUserCommand.validateInput(input); // Manual
+      const user = await deps.userRepo.findById(validInput.userId);
+      if (!user) {
+        return err(new UserNotFoundError({ userId: input.userId }));
+      }
+      return ok(user);
+    }
+  );
+  ```
+
+  ## Breaking Changes
+
+  1. **ValidationError in error union**: All contracts using `implementation()` now include `VALIDATION_ERROR` in their error union. Update exhaustive error matching to handle this case.
+
+  2. **Input transformations applied**: Implementations receive Zod-transformed inputs (trimmed strings, coerced numbers, etc.). If you relied on raw untransformed input, switch to `unsafeImplementation()`.
+
+  3. **Output validation required**: Implementations must return valid outputs matching the output schema. Invalid outputs will return `VALIDATION_ERROR` instead of passing through.
+
+  ## New ValidationError Type
+
+  ```typescript
+  {
+    _tag: 'VALIDATION_ERROR',
+    data: {
+      phase: 'input' | 'output',  // Which validation failed
+      errors: Array<{
+        path: (string | number)[], // Field path (e.g., ['user', 'email'])
+        message: string,            // Error message
+        code: string                // Zod error code
+      }>,
+      message: string               // Human-readable summary
+    }
+  }
+  ```
+
+  ## Benefits
+
+  - ✅ Runtime type safety - invalid data never reaches your implementation
+  - ✅ Automatic Zod transformations - defaults, trims, coercions work automatically
+  - ✅ Cleaner code - no manual validation boilerplate
+  - ✅ Consistent behavior - validation happens in one place
+  - ✅ Better error messages - detailed validation errors with field paths
+
 ## 3.0.4
 
 ### Patch Changes
