@@ -546,16 +546,57 @@ const result = await createUser.run({
 
 if (result.isErr() && result.error._tag === 'VALIDATION_ERROR') {
   console.log('Phase:', result.error.data.phase);  // 'input' or 'output'
-  console.log('Errors:', result.error.data.errors); // Array of Zod validation errors
   
-  // Example error structure:
+  // Access simplified errors array (backward compatible)
+  console.log('Errors:', result.error.data.errors); // Array of simplified error objects
+  
+  // Example simplified error structure:
   // {
   //   path: ['email'],
   //   message: 'Invalid email',
   //   code: 'invalid_string'
   // }
+  
+  // Access full ZodError for advanced use cases
+  console.log('ZodError:', result.error.data.zodError);
+  
+  // Use ZodError methods for detailed formatting
+  const formatted = result.error.data.zodError.format();
+  console.log('Formatted errors:', formatted);
+  
+  // Use flatten() for field-specific errors
+  const flattened = result.error.data.zodError.flatten();
+  console.log('Field errors:', flattened.fieldErrors);
+  
+  // Access all ZodError issues for complete details
+  result.error.data.zodError.issues.forEach(issue => {
+    console.log('Issue:', issue.path, issue.message, issue.code);
+    // Full issue object includes additional properties like:
+    // - validation, unionErrors, keys, etc. depending on error type
+  });
 }
 ```
+
+#### ValidationError Structure
+
+The `ValidationError` provides both simplified and complete error information:
+
+```typescript
+{
+  zodError: ZodError;          // Complete ZodError instance with all methods
+  phase: 'input' | 'output';   // Which validation phase failed
+  errors: Array<{              // Simplified errors (backward compatible)
+    path: (string | number)[];
+    message: string;
+    code: string;
+  }>;
+  message: string;             // Human-readable summary
+}
+```
+
+**When to use each format:**
+- **`errors` array**: Quick access to basic error info, backward compatible
+- **`zodError`**: Advanced formatting, nested errors, union errors, refinement details, or when you need Zod's utility methods (`format()`, `flatten()`, `formErrors()`, etc.)
 
 ### Exhaustive Pattern Matching
 

@@ -124,16 +124,54 @@ export function defineError<TTag extends string, TData extends Record<string, an
 /**
  * System-level error thrown when input or output validation fails.
  * This error is automatically added to all contracts using the `implementation()` method.
+ * 
+ * @property {ZodError} zodError - The complete ZodError instance from Zod validation.
+ *   Provides full access to all Zod error information including nested errors,
+ *   union errors, refinement errors, and all Zod error methods (format(), flatten(), etc.).
+ *   Use this when you need detailed error introspection or want to use Zod's error formatting utilities.
+ * 
+ * @property {Array} errors - Simplified array of validation errors with path, message, and code.
+ *   Provided for backward compatibility and convenient access to basic error information.
+ *   Each error contains:
+ *   - path: Array representing the path to the invalid field (e.g., ['user', 'email'])
+ *   - message: Human-readable error message
+ *   - code: Zod error code (e.g., 'invalid_type', 'too_small', 'invalid_string')
+ * 
+ * @property {string} phase - Indicates whether validation failed during 'input' or 'output' validation
+ * @property {string} message - Human-readable summary of all validation errors
+ * 
+ * @example
+ * ```typescript
+ * if (result.isErr() && result.error._tag === 'VALIDATION_ERROR') {
+ *   // Access simplified errors (backward compatible)
+ *   result.error.data.errors.forEach(e => {
+ *     console.log(`${e.path.join('.')}: ${e.message}`);
+ *   });
+ * 
+ *   // Access full ZodError for advanced use cases
+ *   const formatted = result.error.data.zodError.format();
+ *   console.log(formatted);
+ * 
+ *   // Use ZodError methods
+ *   const flattened = result.error.data.zodError.flatten();
+ *   console.log(flattened.fieldErrors);
+ * }
+ * ```
  */
 export const ValidationError = defineError<
   'VALIDATION_ERROR',
   {
+    /** The complete ZodError instance with full validation details and error methods */
+    zodError: ZodError;
+    /** Whether validation failed during 'input' or 'output' phase */
     phase: 'input' | 'output';
+    /** Simplified array of error objects for convenient access (backward compatible) */
     errors: Array<{
       path: (string | number)[];
       message: string;
       code: string;
     }>;
+    /** Human-readable summary message of all validation errors */
     message: string;
   }
 >('VALIDATION_ERROR', 'Schema validation failed');
@@ -141,15 +179,43 @@ export const ValidationError = defineError<
 /**
  * Helper function to convert a ZodError to a ValidationError instance.
  * 
- * @param zodError - The ZodError from Zod validation
- * @param phase - Whether this was input or output validation
- * @returns A ValidationError instance with structured error data
+ * This function transforms Zod validation errors into our tagged error format while
+ * preserving all error information. It provides both:
+ * 1. The complete ZodError instance for advanced error handling and introspection
+ * 2. A simplified errors array for convenient access to basic error information
+ * 
+ * The simplified errors array maintains backward compatibility with existing code
+ * while the zodError field provides full access to Zod's rich error information
+ * including nested errors, union errors, refinement errors, and utility methods.
+ * 
+ * @param zodError - The ZodError instance from Zod schema validation
+ * @param phase - Whether this error occurred during 'input' or 'output' validation
+ * 
+ * @returns A ValidationError instance containing:
+ *   - zodError: The complete ZodError for advanced use cases
+ *   - errors: Simplified array with path, message, and code for each issue
+ *   - phase: 'input' or 'output' to indicate validation phase
+ *   - message: Human-readable summary of all validation errors
+ * 
+ * @example
+ * ```typescript
+ * const zodError = schema.safeParse(data).error;
+ * const validationError = zodErrorToValidationError(zodError, 'input');
+ * 
+ * // Access simplified errors
+ * validationError.data.errors.forEach(e => console.log(e.path, e.message));
+ * 
+ * // Use ZodError methods
+ * const formatted = validationError.data.zodError.format();
+ * const flattened = validationError.data.zodError.flatten();
+ * ```
  */
 export function zodErrorToValidationError(
   zodError: z.ZodError,
   phase: 'input' | 'output'
 ): InstanceType<typeof ValidationError> {
   return new ValidationError({
+    zodError,
     phase,
     errors: zodError.issues.map(e => ({
       path: e.path.map(p => (typeof p === 'symbol' ? String(p) : p)),

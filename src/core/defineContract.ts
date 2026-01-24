@@ -313,7 +313,25 @@ export function defineCommand<
         TOptions,
         ErrorUnion<[...TErrors, typeof ValidationError]>
       > = async (context) => {
-        // STEP 1: Validate input before calling implementation
+        // ============================================================================
+        // STEP 1: INPUT VALIDATION
+        // ============================================================================
+        // Pre-validate input data against the Zod schema before executing implementation.
+        // This ensures that:
+        // - All required fields are present and of correct types
+        // - All Zod transformations (trim, lowercase, defaults, etc.) are applied
+        // - Implementation receives clean, validated, and transformed data
+        // - Invalid inputs are caught early before business logic executes
+        //
+        // If validation fails, we return a ValidationError containing:
+        // - zodError: The complete ZodError instance with full details and methods
+        // - errors: Simplified array of error objects for convenient access
+        // - phase: 'input' to indicate this happened during input validation
+        // - message: Human-readable summary of all validation errors
+        //
+        // This approach provides both backward compatibility (errors array) and
+        // advanced capabilities (zodError instance with format(), flatten(), etc.)
+        // ============================================================================
         const inputValidation = params.input.safeParse(context.input);
         if (!inputValidation.success) {
           return err(zodErrorToValidationError(inputValidation.error, 'input') as ErrorUnion<[...TErrors, typeof ValidationError]>);
@@ -329,7 +347,27 @@ export function defineCommand<
           // STEP 2: Call implementation with validated input
           const result = await impl(validatedContext);
 
-          // STEP 3: Validate output before returning success
+          // ============================================================================
+          // STEP 3: OUTPUT VALIDATION
+          // ============================================================================
+          // Validate output data against the Zod schema before returning success.
+          // This ensures that:
+          // - Implementation returns data matching the expected contract
+          // - All Zod transformations are applied to output
+          // - Consumers receive correctly typed and validated data
+          // - Schema violations are caught before reaching consumers
+          //
+          // If output validation fails, we return a ValidationError with:
+          // - zodError: Complete ZodError for detailed introspection
+          // - errors: Simplified array for basic error handling
+          // - phase: 'output' to indicate this was output validation failure
+          // - message: Summary of what went wrong in the output
+          //
+          // Output validation failures typically indicate:
+          // - Implementation bugs (returned wrong shape/type)
+          // - Schema evolution issues (implementation not updated)
+          // - Data corruption or unexpected transformation results
+          // ============================================================================
           const outputValidation = params.output.safeParse(result);
           if (!outputValidation.success) {
             return err(zodErrorToValidationError(outputValidation.error, 'output') as ErrorUnion<[...TErrors, typeof ValidationError]>);

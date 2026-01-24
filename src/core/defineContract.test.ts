@@ -365,6 +365,50 @@ describe('defineCommand', () => {
         expect(errors.some(e => e.path.includes('age'))).toBe(true);
       }
     });
+
+    // Test 3.1: Validation errors should include the full ZodError instance
+    it('should include the full ZodError instance in validation failure', async () => {
+      const strictCommand = defineCommand({
+        input: z.object({
+          email: z.string().email(),
+          username: z.string().min(3),
+          age: z.number().min(18).max(120)
+        }),
+        output: z.object({ id: z.string() }),
+        dependencies: {} as Record<string, never>,
+        errors: [] as const
+      });
+
+      const implemented = strictCommand.implementation(async () => {
+        return { id: 'test' };
+      });
+
+      const result = await implemented.run({
+        input: { email: 'bad', username: 'ab', age: 150 },
+        deps: {}
+      });
+
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) {
+        expect(result.error._tag).toBe('VALIDATION_ERROR');
+        
+        // NEW: Verify that the full ZodError instance is available
+        expect(result.error.data.zodError).toBeDefined();
+        expect(result.error.data.zodError.issues).toBeDefined();
+        expect(result.error.data.zodError.issues.length).toBe(3);
+        
+        // Verify we can use ZodError methods
+        expect(typeof result.error.data.zodError.format).toBe('function');
+        const formatted = result.error.data.zodError.format();
+        expect(formatted.email).toBeDefined();
+        expect(formatted.username).toBeDefined();
+        expect(formatted.age).toBeDefined();
+        
+        // Verify backward compatibility - simplified errors array still exists
+        expect(result.error.data.errors).toBeDefined();
+        expect(result.error.data.errors.length).toBe(3);
+      }
+    });
   });
 
   describe('automatic output validation (TDD Phase 1)', () => {
