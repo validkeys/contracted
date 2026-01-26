@@ -1,11 +1,15 @@
 import { z } from 'zod';
 import { Contract, ImplementedContract } from './defineContract';
-import { TaggedError, ErrorUnion } from './errors';
+import { TaggedError, ErrorUnion, ValidationError } from './errors';
 import { ServiceWithContracts, CurriedService, MergeDependencies, MergeErrors } from './serviceFrom';
 
 /**
  * Helper type that converts a record of Contracts to ImplementedContracts.
  * This is used to specify what implementations are required for a service contract.
+ * 
+ * Since the `.implementation()` method automatically adds `ValidationError` to the error union
+ * for input/output validation, this type includes `ValidationError` in the error union to match
+ * the actual runtime behavior and allow seamless service composition.
  * 
  * @template T - Record of contract names to Contract instances
  * 
@@ -20,7 +24,7 @@ import { ServiceWithContracts, CurriedService, MergeDependencies, MergeErrors } 
  */
 export type ImplementedContractsFrom<T extends Record<string, Contract<any, any, any, any, any>>> = {
   [K in keyof T]: T[K] extends Contract<infer TInput, infer TOutput, infer TDeps, infer TOptions, infer TErrors>
-    ? ImplementedContract<TInput, TOutput, TDeps, TOptions, TErrors>
+    ? ImplementedContract<TInput, TOutput, TDeps, TOptions, [...TErrors, typeof ValidationError]>
     : never;
 };
 

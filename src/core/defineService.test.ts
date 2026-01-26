@@ -445,6 +445,122 @@ describe('defineService', () => {
     });
   });
 
+  describe('service composition with ValidationError', () => {
+    it('should accept implementations that include ValidationError in error union', async () => {
+      // This test verifies the fix for the bug where service composition
+      // didn't accept implementations created with .implementation() because
+      // it automatically adds ValidationError to the error union
+      
+      const TestError = defineError<'TEST_ERROR', { message: string }>(
+        'TEST_ERROR',
+        'Test error'
+      );
+      
+      const testCommand = defineCommand({
+        input: z.object({ value: z.string() }),
+        output: z.object({ result: z.string() }),
+        dependencies: {} as { repo: { fetch: (v: string) => Promise<string> } },
+        errors: [TestError] as const
+      });
+      
+      const serviceContract = defineService({
+        test: testCommand
+      });
+      
+      // Using .implementation() automatically adds ValidationError to the error union
+      // This should now work without type errors
+      const testImpl = testCommand.implementation(async ({ input, deps }) => {
+        const result = await deps.repo.fetch(input.value);
+        if (!result) {
+          throw new TestError({ message: 'Not found' });
+        }
+        return { result };
+      });
+      
+      // This should compile and work correctly
+      const createService = serviceContract.implementation({
+        test: testImpl
+      });
+      
+      const service = createService({
+        repo: {
+          fetch: async (v) => `fetched-${v}`
+        }
+      });
+      
+      // Test successful execution
+      const successResult = await service.test.run({ value: 'test' });
+      expect(successResult.isOk()).toBe(true);
+      if (successResult.isOk()) {
+        expect(successResult.value.result).toBe('fetched-test');
+      }
+      
+      // Test that ValidationError is properly included when validation fails
+      const validationResult = await service.test.run({ value: 123 } as any);
+      expect(validationResult.isErr()).toBe(true);
+      if (validationResult.isErr()) {
+        expect(validationResult.error._tag).toBe('VALIDATION_ERROR');
+      }
+    });
+    
+    it('should handle multiple commands with different error types', async () => {
+      // Test that service composition works with multiple commands,
+      // all using .implementation() which adds ValidationError
+      
+      const ErrorA = defineError<'ERROR_A', { code: string }>('ERROR_A', 'Error A');
+      const ErrorB = defineError<'ERROR_B', { reason: string }>('ERROR_B', 'Error B');
+      
+      const commandA = defineCommand({
+        input: z.object({ a: z.string() }),
+        output: z.object({ resultA: z.string() }),
+        dependencies: {} as Record<string, never>,
+        errors: [ErrorA] as const
+      });
+      
+      const commandB = defineCommand({
+        input: z.object({ b: z.number() }),
+        output: z.object({ resultB: z.number() }),
+        dependencies: {} as Record<string, never>,
+        errors: [ErrorB] as const
+      });
+      
+      const serviceContract = defineService({
+        cmdA: commandA,
+        cmdB: commandB
+      });
+      
+      // Both implementations add ValidationError
+      const implA = commandA.implementation(async ({ input }) => {
+        return { resultA: input.a.toUpperCase() };
+      });
+      
+      const implB = commandB.implementation(async ({ input }) => {
+        return { resultB: input.b * 2 };
+      });
+      
+      // This should compile without type errors
+      const createService = serviceContract.implementation({
+        cmdA: implA,
+        cmdB: implB
+      });
+      
+      const service = createService({});
+      
+      // Test both commands work
+      const resultA = await service.cmdA.run({ a: 'hello' });
+      expect(resultA.isOk()).toBe(true);
+      if (resultA.isOk()) {
+        expect(resultA.value.resultA).toBe('HELLO');
+      }
+      
+      const resultB = await service.cmdB.run({ b: 5 });
+      expect(resultB.isOk()).toBe(true);
+      if (resultB.isOk()) {
+        expect(resultB.value.resultB).toBe(10);
+      }
+    });
+  });
+
   describe('MergeDependencies type correctness (issue #5)', () => {
     it('should require ALL dependencies from all commands (intersection, not union)', () => {
       // Command A requires: db, serviceA, logger
