@@ -1,5 +1,47 @@
 # @validkeys/contracted
 
+## 4.1.1
+
+### Patch Changes
+
+- Fix service composition type to include ValidationError
+
+  Fixed a type mismatch in `defineService()` that prevented service composition from working with implementations created via `.implementation()`. The `ImplementedContractsFrom` type now correctly includes `ValidationError` in the error union to match the documented behavior where `.implementation()` automatically adds `ValidationError` for input/output validation.
+
+  **What Changed:**
+
+  - Service composition now accepts implementations created with `.implementation()` without type errors
+  - The type system now accurately reflects runtime behavior (all implementations can throw `ValidationError`)
+  - No workarounds needed - pass implementations directly to `serviceContract.implementation()`
+
+  **Before (Type Error):**
+
+  ```typescript
+  const getUser = getUserCommand.implementation(async ({ input, deps }) => {
+    // Returns ImplementedContract with [...errors, ValidationError]
+    return user;
+  });
+
+  const createService = userServiceContract.implementation({
+    getUser, // ❌ Type error: ValidationError not in expected error union
+  });
+  ```
+
+  **After (Works Correctly):**
+
+  ```typescript
+  const getUser = getUserCommand.implementation(async ({ input, deps }) => {
+    return user;
+  });
+
+  const createService = userServiceContract.implementation({
+    getUser, // ✅ Works seamlessly - ValidationError is expected
+  });
+  ```
+
+  **Migration Guide:**
+  No migration needed - this fix is backward compatible. Code using workarounds (type assertions, `unsafeImplementation()`, or manually adding `ValidationError` to contracts) will continue to work. You can now simplify such code to use the standard `.implementation()` pattern.
+
 ## 4.1.0
 
 ### Minor Changes
