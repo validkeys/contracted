@@ -2,6 +2,14 @@
 
 A TypeScript library for building type-safe, composable services using a contract-first approach. Define your operations with clear inputs, outputs, dependencies, and error types, then compose them into services with automatic dependency injection.
 
+## Agent Skill
+
+This package ships a `SKILL.md` that teaches AI coding assistants how to use Contracted correctly. Install it into your project with [`npx skills`](https://www.npmjs.com/package/skills):
+
+```bash
+npx skills add @validkeys/contracted
+```
+
 ## Table of Contents
 
 - [Installation](#installation)
