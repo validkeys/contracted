@@ -1,5 +1,4 @@
 import { Contract, ImplementedContract } from './defineContract';
-import { ErrorUnion } from './errors';
 import { MergeDependencies, MergeErrors } from './serviceFrom';
 
 // ============================================================================
@@ -40,6 +39,20 @@ export type NamespaceContractValue =
  * constraint alone gives a good IDE error when users pass the right types, but
  * it does not catch an explicit `as any` cast.
  *
+ * ### Variance note
+ *
+ * `types` is intentionally **not** part of this structural interface. The
+ * `MergeDependencies<T>` conditional type inside `types` uses T in a
+ * contravariant position (via `UnionToIntersection`), which makes the whole
+ * interface invariant in T. That breaks assignment of concrete
+ * `Namespace<{ create: Contract<...> }>` values to
+ * `Namespace<Record<string, NamespaceContractValue>>` in stricter compilers
+ * (tsgo / TypeScript 7+). By keeping `types` only on the concrete return type
+ * of `defineNamespace`, assignability is restored: `contracts` is `readonly`
+ * (covariant), and `[NAMESPACE_TAG]` is brand-only. The compile-time
+ * `typeof ns.types.Dependencies` pattern still works via the inferred return
+ * type of `defineNamespace`.
+ *
  * @template T - Record mapping command names to `Contract` or `ImplementedContract`
  *   instances. Must not contain any `Namespace` values.
  *
@@ -61,9 +74,7 @@ export type NamespaceContractValue =
  * });
  * ```
  */
-export interface Namespace<
-  T extends Record<string, NamespaceContractValue>
-> {
+export interface Namespace<T extends Record<string, NamespaceContractValue>> {
   /** Branded tag — present on every Namespace object */
   readonly [NAMESPACE_TAG]: true;
 
@@ -72,14 +83,42 @@ export interface Namespace<
    * Pass these directly to `serviceFrom`, `serviceFromSimple`, or
    * `defineService` / `serviceContract.implementation`.
    *
-   * Marked `readonly` so that `Namespace<T>` is covariant in `T`. Without this,
-   * TypeScript treats the interface as invariant and rejects narrowly-typed
-   * `Namespace<{ create: Contract<...> }>` values where `Namespace<Record<string, ...>>`
-   * is expected (e.g. the `ServiceDefinitionEntry` union) — a TS2322 that surfaces
-   * in stricter compilers (tsgo / TypeScript 7).
+   * `readonly` makes `Namespace<T>` covariant in `T`, so a narrowly-typed
+   * `Namespace<{ create: Contract<...> }>` is structurally assignable to
+   * `Namespace<Record<string, NamespaceContractValue>>`.
    */
   readonly contracts: T;
+}
 
+// ============================================================================
+// CONCRETE RETURN TYPE (includes compile-time metadata)
+// ============================================================================
+
+/**
+ * The concrete type returned by `defineNamespace`. Extends `Namespace<T>` with
+ * compile-time metadata in `types`.
+ *
+ * ### Why this is separate from `Namespace<T>`
+ *
+ * `types.Dependencies` and `types.Errors` use `MergeDependencies<T>` /
+ * `MergeErrors<T>`, which place `T` in a contravariant position (the
+ * `UnionToIntersection` helper uses a function parameter). That makes any
+ * interface that declares those members invariant in `T`, which prevents
+ * assigning `Namespace<{ create: X }>` to `Namespace<Record<string, X>>`
+ * in stricter compilers (tsgo / TypeScript 7+).
+ *
+ * Keeping these members only on `ConcreteNamespace` (the inferred return type
+ * of `defineNamespace`) means users can still write:
+ *
+ * ```typescript
+ * type Deps = typeof myNamespace.types.Dependencies;
+ * ```
+ *
+ * …while `Namespace<T>` itself remains covariant and assignable to the
+ * `ServiceDefinitionEntry` union without a cast.
+ */
+export interface ConcreteNamespace<T extends Record<string, NamespaceContractValue>>
+  extends Namespace<T> {
   /**
    * Compile-time type information for the namespace.
    * These properties hold no runtime value — they exist solely for TypeScript inference.
@@ -131,17 +170,17 @@ export interface Namespace<
  * There is no compile-time guard — TypeScript's structural type system cannot
  * distinguish a `Namespace` from other objects when `as any` casts are used.
  *
- * ### Standalone metadata
+ * ### Compile-time metadata
  *
- * The returned `Namespace` object is self-contained and can be used before
- * any service is created:
+ * The returned object is typed as `ConcreteNamespace<T>`, which extends
+ * `Namespace<T>` and adds a `types` property for inference:
  *
  * ```typescript
  * const ns = defineNamespace({ create: createUserContract });
  * ns.contracts.create;        // the raw contract
  * NAMESPACE_TAG in ns;        // true
- * ns.types.Dependencies;      // merged deps (type-level only)
- * ns.types.Errors;            // merged errors (type-level only)
+ * type Deps = typeof ns.types.Dependencies;  // merged deps (type-level only)
+ * type Errs = typeof ns.types.Errors;        // merged errors (type-level only)
  * ```
  *
  * @template T - Record of command names to `Contract` or `ImplementedContract`
@@ -150,7 +189,7 @@ export interface Namespace<
  *
  * @param contracts - Object mapping command names to contracts or implemented contracts.
  *
- * @returns A `Namespace` object tagged with `NAMESPACE_TAG`.
+ * @returns A `ConcreteNamespace` tagged with `NAMESPACE_TAG`.
  *
  * @throws {Error} When any value in `contracts` is itself a `Namespace` (runtime guard).
  *
@@ -181,7 +220,7 @@ export interface Namespace<
  */
 export function defineNamespace<
   T extends Record<string, NamespaceContractValue>
->(contracts: T): Namespace<T> {
+>(contracts: T): ConcreteNamespace<T> {
   // ──────────────────────────────────────────────────────────────────────────
   // RUNTIME GUARD: one-level-deep enforcement
   // ──────────────────────────────────────────────────────────────────────────
@@ -193,7 +232,7 @@ export function defineNamespace<
     }
   }
 
-  const namespace: Namespace<T> = {
+  const namespace: ConcreteNamespace<T> = {
     [NAMESPACE_TAG]: true,
     contracts,
     types: {

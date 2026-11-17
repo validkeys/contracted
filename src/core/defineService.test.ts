@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { ok, err } from 'neverthrow';
 import { expectTypeOf } from 'expect-type';
-import { defineService } from './defineService';
+import { defineService, ServiceDefinitionEntry } from './defineService';
 import { defineCommand } from './defineContract';
 import { defineError } from './errors';
 import { defineNamespace } from './defineNamespace';
@@ -211,6 +211,18 @@ describe('defineService', () => {
 
       const result = await service.users.getUser.run({ userId: '1' });
       expect(result.isOk()).toBe(true);
+    });
+
+    it('ConcreteNamespace<T> is assignable to ServiceDefinitionEntry without a cast', () => {
+      // ConcreteNamespace<T> (returned by defineNamespace) must be assignable to
+      // ServiceDefinitionEntry without an `as` cast. If the Namespace<T> branch of
+      // ServiceDefinitionEntry ever regained the .types block (reintroducing invariance),
+      // this assignment would produce a TS2322.
+      const ns = defineNamespace({ getUser: getUserCommand });
+
+      // No cast — must compile cleanly
+      const _entry: ServiceDefinitionEntry = ns;
+      void _entry;
     });
 
     it('should handle errors from implementations', async () => {

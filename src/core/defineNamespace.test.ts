@@ -452,6 +452,24 @@ describe('defineNamespace', () => {
       expectTypeOf(ns.types).toHaveProperty('Errors');
       expectTypeOf(ns.types).toHaveProperty('Contracts');
     });
+
+    it('Namespace<T> structural interface does not expose .types (variance invariant)', () => {
+      // Namespace<T> is the covariant structural interface used in ServiceDefinitionEntry.
+      // ConcreteNamespace<T> (the return type of defineNamespace) extends it and adds .types.
+      // If .types were ever merged back into Namespace<T>, the contravariant MergeDependencies
+      // would make the interface invariant in T and reintroduce the TS2322 that this fix resolves.
+      // This test asserts that .types is NOT present on the structural interface.
+      const impl = createUserContract.implementation(async ({ input, deps }) => ({
+        id: deps.userRepo.generate(),
+        name: input.name,
+        email: input.email,
+      }));
+      const ns = defineNamespace({ create: impl });
+      const structuralNs: Namespace<{ create: typeof impl }> = ns;
+
+      // @ts-expect-error — .types is not on Namespace<T>, only on ConcreteNamespace<T>
+      void structuralNs.types;
+    });
   });
 
   // ============================================================================

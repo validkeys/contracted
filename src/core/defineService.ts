@@ -1,7 +1,7 @@
 import { Contract, ImplementedContract } from './defineContract';
 import { ValidationError } from './errors';
 import { ServiceWithContracts, MergeDependencies, MergeErrors, ServiceEntry } from './serviceFrom';
-import { Namespace, NamespaceContractValue, NAMESPACE_TAG } from './defineNamespace';
+import { Namespace, NAMESPACE_TAG } from './defineNamespace';
 
 // ============================================================================
 // HELPER ALIASES
@@ -15,10 +15,25 @@ type AnyNamespace = Namespace<Record<string, AnyImplementedContract>>;
 // ENTRY TYPE — what defineService() accepts
 // ============================================================================
 
-/** A single entry in a service definition — either a Contract or a Namespace of Contracts */
+/**
+ * A single entry in a service definition — either a Contract or a Namespace of Contracts.
+ *
+ * `Namespace<any>` is intentionally used here rather than
+ * `Namespace<Record<string, NamespaceContractValue>>`. Both are structurally
+ * equivalent, but `Namespace<any>` avoids a TypeScript variance failure that
+ * surfaces in stricter compilers (tsgo / TypeScript 7+): checking
+ * `Namespace<{ create: X }> extends Namespace<Record<string, Y>>` requires
+ * checking `{ create: X } extends Record<string, Y>`, which TypeScript refuses
+ * when `X` and `Y` involve complex conditional types (like
+ * `MergeDependencies<T>`). `Namespace<any>` bypasses the check entirely.
+ *
+ * The fix that makes this safe is in `Namespace<T>` itself: the `types` block
+ * (which causes the invariance) is no longer part of the structural interface —
+ * it lives only on `ConcreteNamespace<T>`. See defineNamespace.ts for details.
+ */
 export type ServiceDefinitionEntry =
   | AnyContract
-  | Namespace<Record<string, NamespaceContractValue>>;
+  | Namespace<any>;
 
 // ============================================================================
 // IMPLEMENTED CONTRACTS FROM
