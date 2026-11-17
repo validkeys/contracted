@@ -25,22 +25,6 @@ export type NamespaceContractValue =
   | Contract<any, any, any, any, any>
   | ImplementedContract<any, any, any, any, any>;
 
-/**
- * Conditional guard that evaluates to `never` when any value in `T` is itself
- * a `Namespace`. This enforces the one-level-deep rule at the type level.
- *
- * @example
- * ```typescript
- * // Allowed
- * type Ok = NoNestedNamespaces<{ create: Contract<...> }>; // { create: Contract<...> }
- *
- * // Rejected — evaluates the whole T to never
- * type Bad = NoNestedNamespaces<{ sub: Namespace<any> }>; // never
- * ```
- */
-type NoNestedNamespaces<T extends Record<string, NamespaceContractValue>> =
-  T[keyof T] extends Namespace<any> ? never : T;
-
 // ============================================================================
 // NAMESPACE INTERFACE
 // ============================================================================
@@ -49,9 +33,12 @@ type NoNestedNamespaces<T extends Record<string, NamespaceContractValue>> =
  * A namespace groups related commands under a single key in a service.
  *
  * Namespaces are **one level deep only** — a `Namespace` value cannot itself
- * contain another `Namespace`. This constraint is enforced both at the type
- * level (the generic resolves to `never` for nested namespaces) and at
- * runtime (a guard throws at the top of `defineNamespace`).
+ * contain another `Namespace`. This constraint is enforced **at runtime only**:
+ * passing a `Namespace` as a value will throw an `Error` before any other
+ * processing occurs. TypeScript cannot statically prevent this because
+ * `NamespaceContractValue` excludes `Namespace` from its union; the type
+ * constraint alone gives a good IDE error when users pass the right types, but
+ * it does not catch an explicit `as any` cast.
  *
  * @template T - Record mapping command names to `Contract` or `ImplementedContract`
  *   instances. Must not contain any `Namespace` values.
@@ -133,9 +120,10 @@ export interface Namespace<
  * ### One-level-deep enforcement
  *
  * Namespaces may only contain `Contract` / `ImplementedContract` values —
- * **never** another `Namespace`. This is enforced both at compile time (the
- * generic resolves to `never`) and at runtime (an error is thrown before any
- * other processing).
+ * **never** another `Namespace`. This is enforced **at runtime**: an error is
+ * thrown before any other processing when a nested `Namespace` is detected.
+ * There is no compile-time guard — TypeScript's structural type system cannot
+ * distinguish a `Namespace` from other objects when `as any` casts are used.
  *
  * ### Standalone metadata
  *
@@ -151,8 +139,8 @@ export interface Namespace<
  * ```
  *
  * @template T - Record of command names to `Contract` or `ImplementedContract`
- *   values. Any `Namespace` value in `T` causes the return type to include
- *   `never` (compile-time enforcement).
+ *   values. `Namespace` values in `T` are rejected at runtime by the guard
+ *   inside `defineNamespace`.
  *
  * @param contracts - Object mapping command names to contracts or implemented contracts.
  *
@@ -186,7 +174,7 @@ export interface Namespace<
  */
 export function defineNamespace<
   T extends Record<string, NamespaceContractValue>
->(contracts: NoNestedNamespaces<T>): Namespace<NoNestedNamespaces<T>> {
+>(contracts: T): Namespace<T> {
   // ──────────────────────────────────────────────────────────────────────────
   // RUNTIME GUARD: one-level-deep enforcement
   // ──────────────────────────────────────────────────────────────────────────
@@ -198,13 +186,13 @@ export function defineNamespace<
     }
   }
 
-  const namespace: Namespace<NoNestedNamespaces<T>> = {
+  const namespace: Namespace<T> = {
     [NAMESPACE_TAG]: true,
-    contracts: contracts as NoNestedNamespaces<T>,
+    contracts,
     types: {
       Dependencies: {} as any,
       Errors: {} as any,
-      Contracts: {} as NoNestedNamespaces<T>,
+      Contracts: {} as T,
     },
   };
 
