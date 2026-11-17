@@ -671,11 +671,11 @@ describe('end-to-end integration (issue #7)', () => {
       }
     });
 
-    it('dep injection: service requires ALL deps (userRepo + postRepo)', () => {
-      // @ts-expect-error — missing postRepo should cause TypeScript error
-      const incomplete = createAppService({ userRepo: mockUserRepo });
-      // Runtime still works since postRepo isn't accessed, but type is wrong
-      expect(incomplete).toBeDefined();
+    it('dep injection: missing deps is a TypeScript error (type-only assertion)', () => {
+      // @ts-expect-error — TypeScript enforces that all deps (userRepo + postRepo) are provided.
+      // If this line stops being a TS error the test file will fail to compile,
+      // which is the intended signal. No runtime assertion needed.
+      createAppService({ userRepo: mockUserRepo });
     });
   });
 
@@ -707,10 +707,11 @@ describe('end-to-end integration (issue #7)', () => {
       }
     });
 
-    it('dep injection: creating service with no deps causes TypeScript error', () => {
-      // @ts-expect-error — missing userRepo should cause TypeScript error
-      const badService = createMixedService({});
-      expect(badService).toBeDefined();
+    it('dep injection: missing deps is a TypeScript error (type-only assertion)', () => {
+      // @ts-expect-error — TypeScript enforces that userRepo is provided.
+      // If this line stops being a TS error the test file will fail to compile,
+      // which is the intended signal. No runtime assertion needed.
+      createMixedService({});
     });
   });
 
@@ -737,10 +738,11 @@ describe('end-to-end integration (issue #7)', () => {
       expect(typeof service.users.create).toBe('function');
     });
 
-    it('dep injection: creating service with wrong deps causes TypeScript error', () => {
-      // @ts-expect-error — missing userRepo should cause TypeScript error
-      const badService = createSimpleService({});
-      expect(badService).toBeDefined();
+    it('dep injection: missing deps is a TypeScript error (type-only assertion)', () => {
+      // @ts-expect-error — TypeScript enforces that userRepo is provided.
+      // If this line stops being a TS error the test file will fail to compile,
+      // which is the intended signal. No runtime assertion needed.
+      createSimpleService({});
     });
   });
 });
