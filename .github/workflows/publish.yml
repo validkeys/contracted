@@ -21,6 +21,10 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
+        with:
+          version: 12
+          # Pin to pnpm 12 in CI — pnpm 10+ removes the --git-checks flag that
+          # npm v11 no longer accepts. Local dev stays on pnpm 9 (packageManager).
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -30,10 +34,8 @@ jobs:
           # Do NOT set registry-url here — setup-node injects NODE_AUTH_TOKEN
           # when registry-url is set, which breaks OIDC authentication.
 
-      - name: Upgrade npm and pnpm (OIDC requires npm >= 11.5.1; pnpm 10+ fixes --git-checks)
-        run: |
-          npm install -g npm@latest
-          npm install -g pnpm@latest
+      - name: Upgrade npm (OIDC requires npm >= 11.5.1)
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
