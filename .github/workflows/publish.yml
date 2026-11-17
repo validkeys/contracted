@@ -21,19 +21,32 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        # Reads version from packageManager field in package.json (pnpm 10.18.3+)
-        # pnpm 10.18.3 removes the --git-checks forwarding that npm v11 rejects.
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22.x'
           cache: 'pnpm'
-          # Do NOT set registry-url here — setup-node injects NODE_AUTH_TOKEN
-          # when registry-url is set, which breaks OIDC authentication.
 
       - name: Upgrade npm (OIDC requires npm >= 11.5.1)
         run: npm install -g npm@latest
+
+      - name: Inspect OIDC token claims
+        run: |
+          TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm" | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")
+          # Decode the payload (middle segment) without verifying signature
+          PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 | python3 -c "
+          import sys, base64, json
+          s = sys.stdin.read().strip()
+          # pad to multiple of 4
+          s += '=' * (4 - len(s) % 4)
+          print(json.dumps(json.loads(base64.urlsafe_b64decode(s)), indent=2))
+          ")
+          echo "$PAYLOAD"
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ secrets.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
+          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ secrets.ACTIONS_ID_TOKEN_REQUEST_URL }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -46,6 +59,3 @@ jobs:
 
       - name: Publish to npm (OIDC — no token required)
         run: pnpm changeset publish
-        # OIDC authentication is handled automatically by npm >= 11.5.1
-        # when id-token: write is granted and a trusted publisher is
-        # configured at https://www.npmjs.com/package/@validkeys/contracted
