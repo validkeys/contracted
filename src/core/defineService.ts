@@ -1,7 +1,7 @@
 import { Contract, ImplementedContract } from './defineContract';
 import { ValidationError } from './errors';
 import { ServiceWithContracts, MergeDependencies, MergeErrors, ServiceEntry } from './serviceFrom';
-import { Namespace, NAMESPACE_TAG, NamespaceContractValue } from './defineNamespace';
+import { Namespace, NamespaceContractValue, NAMESPACE_TAG } from './defineNamespace';
 
 // ============================================================================
 // HELPER ALIASES

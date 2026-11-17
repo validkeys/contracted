@@ -167,6 +167,52 @@ describe('defineService', () => {
       }).toThrow('Missing namespace implementation for contract: users. Expected a Namespace object wrapping implementations.');
     });
 
+    it('should accept a narrowly-typed Namespace without a cast (variance fix)', async () => {
+      // defineNamespace returns Namespace<{ getUser: Contract<...> }> — a specific T,
+      // not Namespace<Record<string, NamespaceContractValue>>. defineService must accept
+      // it without requiring an `as` cast.
+      const usersNamespace = defineNamespace({ getUser: getUserCommand });
+
+      // This line must compile — no `as any` or cast needed
+      const serviceContract = defineService({ users: usersNamespace });
+
+      const getUserImpl = getUserCommand.implementation(async () => ({
+        id: '1', name: 'Test', email: 'test@example.com'
+      }));
+      const usersImplNamespace = defineNamespace({ getUser: getUserImpl });
+      const createService = serviceContract.implementation({ users: usersImplNamespace });
+      const service = createService({});
+
+      const result = await service.users.getUser.run({ userId: '1' });
+      expect(result.isOk()).toBe(true);
+    });
+
+    it('should accept a Namespace that is explicitly typed at its declaration site (cross-module variance)', async () => {
+      // This is the cross-module case: when a namespace is defined in one file and
+      // exported, TypeScript preserves the precise declared return type of defineNamespace.
+      // The ServiceDefinitionEntry union must be covariant in its Namespace branch so that
+      // Namespace<{ getUser: Contract<...> }> is assignable without a cast, even when the
+      // variable is annotated with the precise type (as happens across module boundaries
+      // when TypeScript reads the .d.ts declaration of the exported symbol).
+      const usersNamespace: ReturnType<typeof defineNamespace<{ getUser: typeof getUserCommand }>> =
+        defineNamespace({ getUser: getUserCommand });
+
+      // This assignment must compile without error — it reproduces the TS2322 that fires
+      // in consumers when the namespace is imported from a compiled .d.ts module.
+      const _entry: import('./defineService.ts').ServiceDefinitionEntry = usersNamespace;
+
+      const serviceContract = defineService({ users: usersNamespace });
+      const getUserImpl = getUserCommand.implementation(async () => ({
+        id: '1', name: 'Test', email: 'test@example.com'
+      }));
+      const usersImplNamespace = defineNamespace({ getUser: getUserImpl });
+      const createService = serviceContract.implementation({ users: usersImplNamespace });
+      const service = createService({});
+
+      const result = await service.users.getUser.run({ userId: '1' });
+      expect(result.isOk()).toBe(true);
+    });
+
     it('should handle errors from implementations', async () => {
       const serviceContract = defineService({
         getUser: getUserCommand

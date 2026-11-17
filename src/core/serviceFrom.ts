@@ -10,8 +10,8 @@ import { Namespace, NAMESPACE_TAG } from './defineNamespace';
 /** Shorthand for a fully-parameterized ImplementedContract */
 type AnyImplementedContract = ImplementedContract<any, any, any, any, any>;
 
-/** Shorthand for a Namespace whose contracts are ImplementedContracts */
-type AnyNamespace = Namespace<Record<string, AnyImplementedContract>>;
+/** Shorthand for a Namespace of any contracts */
+type AnyNamespace = Namespace<any>;
 
 /** Union that covers both flat commands and namespace values */
 export type ServiceEntry = AnyImplementedContract | AnyNamespace;

@@ -71,8 +71,14 @@ export interface Namespace<
    * The raw contracts (or implemented contracts) that make up this namespace.
    * Pass these directly to `serviceFrom`, `serviceFromSimple`, or
    * `defineService` / `serviceContract.implementation`.
+   *
+   * Marked `readonly` so that `Namespace<T>` is covariant in `T`. Without this,
+   * TypeScript treats the interface as invariant and rejects narrowly-typed
+   * `Namespace<{ create: Contract<...> }>` values where `Namespace<Record<string, ...>>`
+   * is expected (e.g. the `ServiceDefinitionEntry` union) — a TS2322 that surfaces
+   * in stricter compilers (tsgo / TypeScript 7).
    */
-  contracts: T;
+  readonly contracts: T;
 
   /**
    * Compile-time type information for the namespace.
