@@ -1,0 +1,426 @@
+metadata:
+  review_date: "2026-11-17T00:00:00Z"
+  reviewer: "automated"
+  plan_version: "1.0.0"
+  reviewed_files:
+    - .agents/plans/issue-7-define-namespace.md
+
+overall_assessment:
+  status: needs_revision
+  readiness_score: 72
+  summary: >
+    Plan structure is strong with 6 well-scoped tasks across 3 milestones, concrete style
+    anchors with line numbers, affirmative constraints, and a clear drift policy. Task sizing
+    compliance is 83% (5/6 tasks). One task (3.2) is below the 30-minute threshold and should
+    be merged. TDD checklist quality is very high for code tasks. The plan uses a Markdown
+    document rather than the milestones.yaml + milestone-m*.tasks.yaml schema expected by the
+    review toolchain, which limits automated validation. Three targeted gaps prevent full
+    approval: (1) Task 3.2 is undersized (15–30 min), (2) the TDD checklist for Task 1.1
+    instructs the agent to write tests in the wrong file (the implementation file, not a test
+    file), and (3) no revert/incident-note process is documented beyond "STOP".
+  critical_issues_count: 0
+  warnings_count: 5
+
+validation_results:
+  milestones_validation:
+    - check: "Plan file exists and is readable"
+      status: pass
+
+    - check: "Milestones named, described, and logically ordered"
+      status: pass
+      details: "M1 (types) → M2 (runtime) → M3 (tests/export) is a correct dependency order."
+
+    - check: "Plan uses milestones.yaml + milestone-m*.tasks.yaml schema"
+      status: warning
+      details: >
+        Plan is a single Markdown file rather than the structured YAML schema. Automated
+        validation tooling (sherpy review-plan) cannot parse it. Consider converting to the
+        expected schema format in a future iteration; not blocking for now.
+
+    - check: "Global constraints and quality gates defined"
+      status: pass
+      details: "Constraints section and per-task validation commands are present."
+
+    - check: "Drift policy documented"
+      status: warning
+      details: >
+        STOP criteria are listed but there is no revert instruction (e.g., 'git stash' or
+        'git checkout') and no incident-note location is defined. The drift policy best practice
+        requires: (1) stop, (2) revert, (3) file note in docs/drift-incidents/.
+
+  tasks_validation:
+    - milestone_id: "M1"
+      checks:
+        - check: "Task 1.1 — estimate within 30-150 min"
+          status: pass
+          details: "90–120 min. Optimal."
+
+        - check: "Task 1.1 — TDD checklist directs tests to correct file"
+          status: warning
+          affected_tasks: ["1.1"]
+          details: >
+            The TDD checklist says 'Write type-level tests first (using expectTypeOf)' and
+            'Write failing runtime test: defineNamespace({}) ...' but Touch ONLY is
+            src/core/defineNamespace.ts (the implementation file). Tests must live in
+            src/core/defineNamespace.test.ts. An AI agent following these instructions literally
+            will write tests inside the source file, breaking the build. Either move tests to
+            Task 3.1 (and change 1.1 to implementation-only) or add the test file to the
+            Touch ONLY list for 1.1.
+
+        - check: "Task 1.2 — estimate within 30-150 min"
+          status: pass
+          details: "90–120 min. Optimal."
+
+        - check: "Task 1.2 — TDD checklist writes tests before implementation"
+          status: pass
+          details: "Failing type tests listed before implementation steps."
+
+    - milestone_id: "M2"
+      checks:
+        - check: "Task 2.1 — estimate within 30-150 min"
+          status: pass
+          details: "60–90 min. Optimal."
+
+        - check: "Task 2.1 — TDD checklist present and test-first"
+          status: pass
+
+        - check: "Task 2.2 — estimate within 30-150 min"
+          status: pass
+          details: "60–90 min. Optimal."
+
+        - check: "Task 2.2 — TDD checklist present and test-first"
+          status: pass
+
+    - milestone_id: "M3"
+      checks:
+        - check: "Task 3.1 — estimate within 30-150 min"
+          status: pass
+          details: "90–120 min. Optimal."
+
+        - check: "Task 3.1 — 12-item TDD checklist"
+          status: pass
+          details: "Comprehensive and ordered correctly (write all tests before running)."
+
+        - check: "Task 3.2 — estimate within 30-150 min"
+          status: warning
+          affected_tasks: ["3.2"]
+          details: >
+            Estimate is 15–30 min — below the 30-minute threshold. A trivial export line
+            plus JSDoc is not an independently committable chunk of meaningful work. Merge
+            with Task 3.1 (append the export and JSDoc after the test file is green) or fold
+            into 3.3 as a pre-condition step.
+
+        - check: "Task 3.3 — estimate within 30-150 min"
+          status: pass
+          details: "30–45 min. Acceptable (at the lower boundary; rationale is implied by its narrow scope)."
+
+        - check: "Task 3.3 — missing TDD checklist items for serviceFrom path"
+          status: warning
+          affected_tasks: ["3.3"]
+          details: >
+            The end-to-end smoke test covers defineService + serviceFrom + serviceFromSimple API
+            shapes but the TDD checklist does not include a failing-test-first step for the
+            serviceFrom mixed-flat+namespace path. Task 2.1 covers serviceFrom unit tests, but
+            the integration test should explicitly assert the serviceFrom path resolves as well,
+            since issue #7 shows both usage forms. Add: 'serviceFrom with mixed flat+namespace:
+            service.flatCmd.run(...) and service.ns.create.run(...) both succeed in same instance'.
+
+best_practices_review:
+  task_sizing:
+    compliant_count: 5
+    total_count: 6
+    compliance_percentage: 83
+    violations:
+      - task_id: "3.2"
+        estimated_minutes: 22   # midpoint of 15-30 range
+        issue: "Below 30-minute minimum threshold."
+        recommendation: >
+          Merge Task 3.2 (export + JSDoc) into Task 3.1 as a final step: after all namespace
+          tests are green, add the re-export line and JSDoc in the same commit. Update the
+          Touch ONLY list for 3.1 to include src/index.ts. This yields a single 105–150 min
+          task with a natural commit point.
+
+  style_anchors:
+    coverage_score: 95
+    tasks_with_anchors: 6
+    tasks_without_anchors: 0
+    missing_anchors: []
+    notes: >
+      All six tasks include at least two style anchors with exact file paths and line numbers.
+      Anchors cover code, test, and type patterns. This is excellent.
+
+  tdd_requirements:
+    test_first_compliance: 83
+    tdd_flag_set: true
+    violations:
+      - task_id: "1.1"
+        issue: >
+          TDD checklist instructs writing tests in src/core/defineNamespace.ts (Touch ONLY),
+          which is the implementation file. Test code belongs in defineNamespace.test.ts.
+          An AI agent following instructions literally will put test code in the wrong file.
+        recommendation: >
+          Option A (preferred): Remove TDD checklist from Task 1.1 entirely; make it
+          implementation-only. Move the type-level and runtime structure tests to Task 3.1
+          (which already owns defineNamespace.test.ts) as the first items in its checklist.
+          Option B: Add src/core/defineNamespace.test.ts to Task 1.1's Touch ONLY list and
+          clarify that tests go in the test file, not the source file.
+
+  drift_prevention:
+    affirmative_instructions: 95
+    ambiguous_tasks: []
+    drift_policy_gaps:
+      - issue: "No revert instruction provided."
+        recommendation: >
+          Add to global Drift Policy: 'Revert to pre-task state with: git stash or
+          git checkout -- <files>. Do not carry partial changes forward.'
+      - issue: "No incident-note location defined."
+        recommendation: >
+          Add to global Drift Policy: 'Create incident note in docs/drift-incidents/
+          YYYY-MM-DD-<task-id>.md documenting: what happened, files changed unexpectedly,
+          dependencies proposed, remediation steps.'
+
+requirements_alignment:
+  business_requirements_coverage:
+    - requirement_id: "issue-7-FR-1"
+      requirement_name: "defineNamespace() accepts flat record of Contract or ImplementedContract"
+      covered_by_tasks: ["1.1"]
+      coverage_status: complete
+
+    - requirement_id: "issue-7-FR-2"
+      requirement_name: "Works in defineService() and serviceFrom() / serviceFromSimple()"
+      covered_by_tasks: ["2.1", "2.2"]
+      coverage_status: complete
+
+    - requirement_id: "issue-7-FR-3"
+      requirement_name: "Resulting service nests commands one level deep under namespace key"
+      covered_by_tasks: ["2.1", "2.2", "3.1"]
+      coverage_status: complete
+
+    - requirement_id: "issue-7-FR-4"
+      requirement_name: "MergeDependencies flattens deps across all namespaces and top-level commands"
+      covered_by_tasks: ["1.2", "3.1"]
+      coverage_status: complete
+
+    - requirement_id: "issue-7-FR-5"
+      requirement_name: "Error unions merged across the whole service"
+      covered_by_tasks: ["1.2", "3.1"]
+      coverage_status: complete
+
+    - requirement_id: "issue-7-FR-6"
+      requirement_name: "Namespace commands retain full metadata (schemas, types, errors, validateInput, validateOutput)"
+      covered_by_tasks: ["2.1", "3.1"]
+      coverage_status: complete
+
+    - requirement_id: "issue-7-FR-7"
+      requirement_name: "defineNamespace is a named export from root index.ts"
+      covered_by_tasks: ["3.2"]
+      coverage_status: complete
+
+    - requirement_id: "issue-7-CONSTRAINT-1"
+      requirement_name: "One level deep only — no nested namespaces"
+      covered_by_tasks: ["3.1"]
+      coverage_status: partial
+      gap_description: >
+        Task 3.1 checklist includes 'Namespace cannot contain another namespace (runtime guard
+        or type-level prevention)' but Tasks 1.1 and 1.2 do not explicitly describe how the
+        type system or runtime should enforce this. The plan leaves the enforcement mechanism
+        as an open question. Consider adding a note in Task 1.1's instructions specifying the
+        approach (e.g., the Namespace<T> generic bound should exclude Namespace values, or a
+        runtime guard should throw).
+
+    - requirement_id: "issue-7-CONSTRAINT-2"
+      requirement_name: "No breaking changes to existing flat services"
+      covered_by_tasks: ["1.2", "2.1", "2.2", "3.1"]
+      coverage_status: complete
+      notes: "Every task includes 'Do NOT break existing flat-service behavior' and runs the full test suite."
+
+    - requirement_id: "issue-7-TYPE-1"
+      requirement_name: "TypeScript infers nested structure — no any escape"
+      covered_by_tasks: ["1.1", "1.2", "3.1"]
+      coverage_status: complete
+
+    - requirement_id: "issue-7-TYPE-2"
+      requirement_name: "defineNamespace return type distinguishable from plain Contract at type level (branded)"
+      covered_by_tasks: ["1.1"]
+      coverage_status: complete
+      notes: "NAMESPACE_TAG symbol brand is explicitly specified."
+
+    - requirement_id: "issue-7-OOS-1"
+      requirement_name: "serviceFromSimple namespace path"
+      covered_by_tasks: ["2.1", "3.1"]
+      coverage_status: complete
+
+    - requirement_id: "issue-7-OOS-2"
+      requirement_name: "defineNamespace return value exposes .contracts, .types.Dependencies, .types.Errors"
+      covered_by_tasks: ["1.1", "3.1"]
+      coverage_status: partial
+      gap_description: >
+        Issue #7 specifies that defineNamespace returns a rich object where
+        usersNamespace.contracts, usersNamespace.types.Dependencies, and
+        usersNamespace.types.Errors are all accessible independently (not just through the
+        service). Task 1.1 covers the interface shape but neither Task 1.1 nor Task 3.1
+        explicitly include a test asserting standalone namespace metadata access outside of a
+        service context. Add this to the Task 3.1 or 3.3 TDD checklist.
+
+issues:
+  critical: []
+
+  warnings:
+    - id: WARN-001
+      category: tdd
+      description: >
+        Task 1.1 TDD checklist instructs writing tests inside src/core/defineNamespace.ts
+        (the implementation file). Test code will break the build if placed there.
+      location: ".agents/plans/issue-7-define-namespace.md: Task 1.1"
+      recommendation: >
+        Remove the TDD checklist from Task 1.1 and make it implementation-only. Promote the
+        type-level and runtime structure tests to Task 3.1's checklist as the first two items.
+        Alternatively, add src/core/defineNamespace.test.ts to Task 1.1's Touch ONLY list and
+        clarify explicitly: 'Tests go in defineNamespace.test.ts, NOT in defineNamespace.ts.'
+
+    - id: WARN-002
+      category: task_sizing
+      description: "Task 3.2 (export + JSDoc) estimates 15–30 min, below the 30-minute minimum."
+      location: ".agents/plans/issue-7-define-namespace.md: Task 3.2"
+      recommendation: >
+        Merge Task 3.2 into Task 3.1. Add 'export * from ./core/defineNamespace' to src/index.ts
+        and JSDoc to defineNamespace.ts as the final steps of Task 3.1, after all tests are
+        green. Update Touch ONLY for 3.1 to include src/index.ts.
+
+    - id: WARN-003
+      category: best_practices
+      description: "Drift policy is missing revert instructions and incident-note location."
+      location: ".agents/plans/issue-7-define-namespace.md: Drift Policy section"
+      recommendation: >
+        Add two lines to the global Drift Policy:
+        (1) 'Revert: git stash or git checkout -- <files listed in Touch ONLY>'
+        (2) 'File incident note in docs/drift-incidents/YYYY-MM-DD-<task-id>.md'
+
+    - id: WARN-004
+      category: requirements_alignment
+      description: >
+        Enforcement mechanism for 'one level deep only' constraint is unspecified in Tasks
+        1.1 and 1.2. Task 3.1 tests the constraint but does not describe what to test against.
+      location: ".agents/plans/issue-7-define-namespace.md: Task 1.1 instructions"
+      recommendation: >
+        Add to Task 1.1 instructions: 'The Namespace<T> generic bound must exclude Namespace
+        values in T (use a conditional type or branded exclusion). Optionally add a runtime
+        guard: if any value in contracts has NAMESPACE_TAG, throw new Error("Nested namespaces
+        are not supported").' This tells the agent exactly what to implement and what the Task
+        3.1 test will assert against.
+
+    - id: WARN-005
+      category: requirements_alignment
+      description: >
+        Issue #7 specifies that defineNamespace exposes standalone metadata
+        (usersNamespace.contracts, .types.Dependencies, .types.Errors) independent of any
+        service. No test in the plan explicitly covers this standalone usage.
+      location: ".agents/plans/issue-7-define-namespace.md: Task 3.1 TDD Checklist"
+      recommendation: >
+        Add to Task 3.1 TDD checklist: 'Standalone metadata: const ns = defineNamespace({...});
+        expect(ns.contracts).toBeDefined(); and type test: expectTypeOf<typeof ns.types.Dependencies>
+        to equal the merged deps intersection.' This covers the defineNamespace return value
+        spec from issue #7.
+
+  info:
+    - id: INFO-001
+      category: best_practices
+      description: >
+        Task 3.3 smoke test covers defineService, serviceFrom, and serviceFromSimple paths but
+        does not explicitly assert the serviceFrom mixed flat+namespace path.
+      suggestion: >
+        Add one checklist item: 'serviceFrom with one flat command and one namespace: both
+        flatCmd.run(...) and ns.create.run(...) succeed in the same service instance.' This
+        directly matches the mixed-service example in issue #7.
+
+    - id: INFO-002
+      category: best_practices
+      description: >
+        The plan format is a single Markdown file. The review toolchain (sherpy review-plan)
+        expects milestones.yaml + milestone-m*.tasks.yaml. This is an informational note only;
+        the plan is fully reviewable by an AI agent in its current form.
+      suggestion: >
+        For future plans, consider generating the structured YAML schema to enable automated
+        validation, timeline generation, and machine-readable coverage matrices.
+
+    - id: INFO-003
+      category: quality_gates
+      description: "No explicit 'commit after each task' instruction in task bodies."
+      suggestion: >
+        Add 'git add <touch-only files> && git commit -m "feat: <task name>"' as the final
+        step in each task's validation section. This prevents large uncommitted diffs that are
+        hard to review or revert.
+
+recommendations:
+  - priority: high
+    category: tdd
+    recommendation: >
+      Fix Task 1.1 TDD/Touch ONLY mismatch. This is the highest-risk issue: an AI agent
+      following the instructions as written will put test code in the source file.
+    affected_items: ["1.1"]
+    effort: "5 minutes — either delete the TDD checklist from 1.1 or add the test file to Touch ONLY."
+
+  - priority: high
+    category: requirements_alignment
+    recommendation: >
+      Specify the 'one level deep only' enforcement mechanism in Task 1.1 instructions so the
+      agent knows exactly what to build and Task 3.1 knows what to test.
+    affected_items: ["1.1", "3.1"]
+    effort: "5 minutes — add 2–3 sentences to Task 1.1 instructions."
+
+  - priority: medium
+    category: task_sizing
+    recommendation: >
+      Merge Task 3.2 (undersized export+JSDoc) into Task 3.1 to meet the 30-minute minimum.
+    affected_items: ["3.1", "3.2"]
+    effort: "10 minutes — update Task 3.1 Touch ONLY and checklist, remove Task 3.2."
+
+  - priority: medium
+    category: best_practices
+    recommendation: >
+      Add revert command and incident-note path to the global Drift Policy.
+    affected_items: []
+    effort: "5 minutes — two bullet points."
+
+  - priority: medium
+    category: requirements_alignment
+    recommendation: >
+      Add standalone defineNamespace metadata test to Task 3.1 TDD checklist (issue #7
+      explicitly specifies usersNamespace.contracts/.types.Dependencies/.types.Errors).
+    affected_items: ["3.1"]
+    effort: "5 minutes — one checklist item."
+
+  - priority: low
+    category: quality_gates
+    recommendation: >
+      Add 'git commit' as the last validation step of each task to enforce incremental commits.
+    affected_items: ["1.1", "1.2", "2.1", "2.2", "3.1", "3.3"]
+    effort: "5 minutes total."
+
+  - priority: low
+    category: best_practices
+    recommendation: >
+      Task 3.3 smoke test: add one assertion for the serviceFrom mixed flat+namespace path.
+    affected_items: ["3.3"]
+    effort: "2 minutes — one checklist item."
+
+approval:
+  ready_for_development: false
+  conditions:
+    - >
+      WARN-001 (HIGH): Fix Task 1.1 TDD checklist — tests must not be written in the
+      implementation file. Either remove TDD checklist from 1.1 or add defineNamespace.test.ts
+      to its Touch ONLY list with explicit placement guidance.
+    - >
+      WARN-004 (HIGH): Add enforcement mechanism for 'one level deep only' to Task 1.1
+      instructions (type-level exclusion and/or runtime guard).
+    - >
+      WARN-002 (MEDIUM): Merge Task 3.2 into Task 3.1 to resolve the undersized task.
+    - >
+      WARN-003 (MEDIUM): Add revert command and docs/drift-incidents/ path to Drift Policy.
+    - >
+      WARN-005 (MEDIUM): Add standalone defineNamespace metadata test to Task 3.1 checklist.
+  next_steps:
+    - "Update .agents/plans/issue-7-define-namespace.md with the five conditions above."
+    - "Re-run implementation-plan-review skill to confirm score reaches ≥90."
+    - "Obtain approval before starting Task 1.1."

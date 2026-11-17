@@ -1,0 +1,360 @@
+metadata:
+  review_date: "2026-04-15T14:30:00Z"
+  reviewer: "automated"
+  plan_version: "1.0.0"
+  reviewed_files:
+    - milestones.yaml
+    - milestone-m0.tasks.yaml
+    - milestone-m1.tasks.yaml
+    - milestone-m2.tasks.yaml
+
+overall_assessment:
+  status: needs_revision
+  readiness_score: 78
+  summary: "Plan structure is solid with 12 well-defined tasks across 3 milestones. Task sizing compliance is 83% (10/12 tasks). Two tasks exceed recommended limits. Style anchor coverage is good at 85%. TDD compliance needs improvement (75%) - 3 tasks missing test-first instructions. Requirements coverage is strong. No critical structural issues found."
+  critical_issues_count: 0
+  warnings_count: 5
+
+validation_results:
+  milestones_validation:
+    - check: "All required root fields present (milestone, name, description, dependencies, success_criteria)"
+      status: pass
+
+    - check: "Milestone IDs sequential and properly formatted (m0, m1, m2)"
+      status: pass
+
+    - check: "All milestones have 3-8 success criteria"
+      status: warning
+      details: "Milestone m2 has only 2 success criteria (recommended: 3-8 for clear acceptance)"
+
+    - check: "Milestone names descriptive and unique"
+      status: pass
+
+    - check: "Milestone descriptions complete (50-500 characters)"
+      status: pass
+
+    - check: "Milestone dependencies valid (reference existing milestones)"
+      status: pass
+
+    - check: "Generated timestamp in ISO 8601 format"
+      status: pass
+
+  tasks_validation:
+    - milestone_id: m0
+      checks:
+        - check: "All required task fields present"
+          status: pass
+
+        - check: "Task IDs sequential (m0-001, m0-002, m0-003, m0-004)"
+          status: pass
+
+        - check: "Task estimates within 30-150 minutes"
+          status: warning
+          affected_tasks: [m0-004]
+          details: "Task m0-004 estimates 180 minutes (exceeds 150-minute guideline). Consider splitting into two tasks."
+
+        - check: "Task names descriptive and actionable"
+          status: pass
+
+        - check: "Task descriptions complete (50-500 characters)"
+          status: pass
+
+        - check: "All task dependencies reference valid task IDs"
+          status: pass
+
+        - check: "No circular dependencies detected"
+          status: pass
+
+        - check: "Files section contains create, modify, or touch_only"
+          status: pass
+
+        - check: "Instructions detailed (100-2000 characters)"
+          status: pass
+
+        - check: "Global constraints defined"
+          status: pass
+
+        - check: "Quality gates configured (at least 1)"
+          status: pass
+
+    - milestone_id: m1
+      checks:
+        - check: "All required task fields present"
+          status: pass
+
+        - check: "Task IDs sequential (m1-001, m1-002, m1-003, m1-004, m1-005)"
+          status: pass
+
+        - check: "Task estimates within 30-150 minutes"
+          status: pass
+
+        - check: "All task dependencies reference valid task IDs"
+          status: pass
+
+        - check: "No circular dependencies detected"
+          status: pass
+
+        - check: "Files section properly structured"
+          status: pass
+
+        - check: "Instructions detailed and actionable"
+          status: pass
+
+    - milestone_id: m2
+      checks:
+        - check: "All required task fields present"
+          status: pass
+
+        - check: "Task IDs sequential (m2-001, m2-002, m2-003)"
+          status: pass
+
+        - check: "Task estimates within 30-150 minutes"
+          status: warning
+          affected_tasks: [m2-003]
+          details: "Task m2-003 estimates 25 minutes (below 30-minute threshold). Consider combining with related task."
+
+        - check: "All task dependencies reference valid task IDs"
+          status: pass
+
+        - check: "Instructions quality"
+          status: pass
+
+best_practices_review:
+  task_sizing:
+    compliant_count: 10
+    total_count: 12
+    compliance_percentage: 83
+    violations:
+      - task_id: m0-004
+        estimated_minutes: 180
+        issue: "Exceeds maximum 150-minute limit by 30 minutes"
+        recommendation: "Split into two tasks: 1) 'Implement core authentication service' (90m), 2) 'Add authentication validation and error handling' (90m)"
+
+      - task_id: m2-003
+        estimated_minutes: 25
+        issue: "Below minimum 30-minute threshold"
+        recommendation: "Combine with m2-004 (documentation task, 35m) into single 'Implement and document WebSocket configuration' task (60m)"
+
+  style_anchors:
+    coverage_score: 85
+    tasks_with_anchors: 9
+    tasks_without_anchors: 2
+    missing_anchors:
+      - task_id: m1-003
+        task_name: "Implement UserService"
+        reason: "Service implementation should reference SA-001 (Effect.Service with Repository pattern) for consistency with architecture"
+
+      - task_id: m2-005
+        task_name: "Implement NotificationService"
+        reason: "Service implementation should reference SA-001 (Effect.Service pattern) and SA-015 (Error handling with Result types)"
+
+  tdd_requirements:
+    test_first_compliance: 75
+    tdd_flag_set: true
+    violations:
+      - task_id: m0-002
+        issue: "Global constraint 'tdd_required: true' but task instructions don't specify test-first approach"
+        recommendation: "Add 'Write failing test first' as step 1 in instructions. Example: '1. Write failing test for user creation (test-first), 2. Implement User model to pass test, 3. Refactor as needed'"
+
+      - task_id: m1-005
+        issue: "No testing requirements section in instructions despite tdd_required flag"
+        recommendation: "Add **Testing Requirements:** section with: '- Write unit tests before implementation (TDD), - Test all CRUD operations, - Achieve >80% coverage'"
+
+      - task_id: m2-003
+        issue: "Instructions mention testing but don't emphasize test-first workflow"
+        recommendation: "Make TDD explicit: Change 'Add tests for WebSocket' to '1. Write failing WebSocket connection test, 2. Implement connection logic, 3. Write failing message test, 4. Implement message handling'"
+
+  drift_prevention:
+    affirmative_instructions: 82
+    ambiguous_tasks:
+      - task_id: m2-001
+        issue: "Instructions say 'Setup WebSocket integration' without specific implementation steps"
+        recommendation: "Break into concrete steps: 1) Install Socket.io dependencies, 2) Create WebSocket server in src/websocket/, 3) Configure Redis adapter for horizontal scaling, 4) Add connection event handlers"
+
+      - task_id: m1-004
+        issue: "Description says 'Add validation' but instructions lack specifics on validation rules"
+        recommendation: "Specify validation rules explicitly: 'Use Zod schema from **SA-003**. Validate: email format (regex), password strength (8+ chars, 1 uppercase, 1 number), username uniqueness (check repository)'"
+
+requirements_alignment:
+  business_requirements_coverage:
+    - requirement_id: BR-001
+      requirement_name: "User Authentication and Authorization"
+      covered_by_milestones: [m0, m1]
+      coverage_status: complete
+
+    - requirement_id: BR-002
+      requirement_name: "Real-time Notifications"
+      covered_by_milestones: [m2]
+      coverage_status: partial
+      gap_description: "WebSocket implementation covered (m2-001, m2-002) but push notification integration for mobile devices is missing. Consider adding task for Firebase Cloud Messaging setup."
+
+    - requirement_id: BR-003
+      requirement_name: "User Profile Management"
+      covered_by_milestones: [m1]
+      coverage_status: complete
+
+    - requirement_id: BR-004
+      requirement_name: "Advanced Reporting Dashboard"
+      covered_by_milestones: []
+      coverage_status: missing
+      gap_description: "No milestones address reporting features. Confirm this is out of scope for v1.0 or add milestone m3 for reporting."
+
+  technical_requirements_coverage:
+    - requirement_id: TR-Architecture
+      requirement_name: "Effect-ts Service Layer with Repository Pattern"
+      covered_by_tasks: [m0-001, m0-002, m1-003, m1-005, m2-005]
+      coverage_status: complete
+
+    - requirement_id: TR-API
+      requirement_name: "TRPC API with Zod Validation"
+      covered_by_tasks: [m1-002, m1-004, m2-002]
+      coverage_status: complete
+
+    - requirement_id: TR-Testing
+      requirement_name: "80% Test Coverage with TDD Approach"
+      covered_by_tasks: [m0-003, m1-006, m2-006]
+      coverage_status: partial
+      gap_description: "Unit test tasks defined but no integration test tasks for API layer. Add task: 'Create TRPC integration tests' (90m) to m1."
+
+    - requirement_id: TR-Database
+      requirement_name: "PostgreSQL with Drizzle ORM"
+      covered_by_tasks: [m0-001, m1-001]
+      coverage_status: complete
+
+    - requirement_id: TR-Deployment
+      requirement_name: "Docker Containerization and CI/CD"
+      covered_by_tasks: [m0-005, m2-007]
+      coverage_status: complete
+
+    - requirement_id: TR-Monitoring
+      requirement_name: "Observability with OpenTelemetry"
+      covered_by_tasks: []
+      coverage_status: missing
+      gap_description: "No tasks address observability setup. Add task to m2: 'Setup OpenTelemetry tracing' (60m) to meet technical requirements."
+
+issues:
+  critical: []
+
+  warnings:
+    - id: WARN-001
+      category: task_sizing
+      description: "Task m0-004 exceeds maximum 150-minute duration guideline"
+      location: "milestone-m0.tasks.yaml: m0-004"
+      recommendation: "Split into two tasks: 'Implement core authentication service' (90m) and 'Add authentication validation and error handling' (90m). This reduces risk and improves estimability."
+
+    - id: WARN-002
+      category: task_sizing
+      description: "Task m2-003 below minimum 30-minute threshold"
+      location: "milestone-m2.tasks.yaml: m2-003"
+      recommendation: "Combine with m2-004 into single task 'Implement and document WebSocket configuration' (60m). Small tasks add overhead without providing meaningful progress tracking."
+
+    - id: WARN-003
+      category: tdd
+      description: "TDD required but task m0-002 instructions don't specify test-first approach"
+      location: "milestone-m0.tasks.yaml: m0-002, global_constraints.tdd_required: true"
+      recommendation: "Update instructions to emphasize test-first workflow: '1. Write failing test for user creation, 2. Implement User model to pass test, 3. Write failing test for validation, 4. Add validation logic, 5. Refactor as needed'"
+
+    - id: WARN-004
+      category: tdd
+      description: "Missing testing requirements section in m1-005 despite tdd_required flag"
+      location: "milestone-m1.tasks.yaml: m1-005"
+      recommendation: "Add **Testing Requirements:** section with clear TDD expectations: 'Write unit tests before implementation, Test all CRUD operations with mocks, Achieve >80% coverage, Follow test patterns from **SA-004**'"
+
+    - id: WARN-005
+      category: style_anchors
+      description: "Service implementation tasks missing style anchor references"
+      location: "milestone-m1.tasks.yaml: m1-003, milestone-m2.tasks.yaml: m2-005"
+      recommendation: "Add style_anchor_refs: [SA-001, SA-015] to both tasks. Update instructions to reference patterns: 'Follow **SA-001** for Effect.Service structure and **SA-015** for error handling with Result types'"
+
+    - id: WARN-006
+      category: requirements_alignment
+      description: "BR-002 (Real-time Notifications) partially covered - missing mobile push notifications"
+      location: "business-requirements.yaml: BR-002"
+      recommendation: "Add task to m2: 'Setup Firebase Cloud Messaging for push notifications' (90m). Or clarify scope: if push notifications are v2.0 feature, document in business-requirements.yaml."
+
+    - id: WARN-007
+      category: requirements_alignment
+      description: "TR-Testing partially covered - no integration test tasks"
+      location: "technical-requirements.yaml: TR-Testing"
+      recommendation: "Add task to m1: 'Create TRPC API integration tests' (90m). Test: user authentication flow, CRUD operations, error handling. Complement unit tests with end-to-end coverage."
+
+  info:
+    - id: INFO-001
+      category: best_practices
+      description: "Task naming could be more specific for m2-001"
+      suggestion: "Current: 'Setup WebSocket integration'. More specific: 'Configure Socket.io server with Redis adapter for horizontal scaling'. Helps developers understand scope at a glance."
+
+    - id: INFO-002
+      category: quality_gates
+      description: "No pre-push quality gate defined in milestone task files"
+      suggestion: "Consider adding pre-push stage with: commands: ['npm run test:integration', 'npm run build', 'git fetch && git status']. Catches issues before pushing to remote."
+
+    - id: INFO-003
+      category: best_practices
+      description: "Milestone m2 has only 2 success criteria (recommended: 3-8)"
+      suggestion: "Add more specific acceptance criteria: 'Real-time message delivery <100ms latency', 'WebSocket reconnection works after network drop', 'Handle 1000+ concurrent connections'"
+
+recommendations:
+  - priority: high
+    category: task_sizing
+    recommendation: "Split oversized tasks and combine undersized tasks to meet 30-150 minute guideline"
+    affected_items: [m0-004, m2-003]
+    effort: "30-45 minutes to redesign task breakdown and update task files"
+
+  - priority: high
+    category: tdd
+    recommendation: "Add explicit test-first instructions to all code tasks (tdd_required: true in global_constraints)"
+    affected_items: [m0-002, m1-005, m2-003]
+    effort: "20 minutes to update instructions with TDD workflow steps"
+
+  - priority: medium
+    category: style_anchors
+    recommendation: "Add style anchor references to service implementation tasks for architectural consistency"
+    affected_items: [m1-003, m2-005]
+    effort: "10 minutes to add SA-001 and SA-015 references and update instructions"
+
+  - priority: medium
+    category: requirements_alignment
+    recommendation: "Clarify scope for BR-002 (push notifications) and BR-004 (reporting) - are these v1.0 or future releases?"
+    affected_items: []
+    effort: "15-minute discussion with product owner to confirm scope boundaries"
+
+  - priority: medium
+    category: requirements_alignment
+    recommendation: "Add integration test task to m1 to fully satisfy TR-Testing technical requirement"
+    affected_items: [m1]
+    effort: "10 minutes to add new task m1-007: 'Create TRPC API integration tests' (90m)"
+
+  - priority: medium
+    category: requirements_alignment
+    recommendation: "Add observability task to m2 to satisfy TR-Monitoring technical requirement"
+    affected_items: [m2]
+    effort: "10 minutes to add new task m2-008: 'Setup OpenTelemetry tracing' (60m)"
+
+  - priority: low
+    category: quality_gates
+    recommendation: "Add pre-push quality gate to catch issues before pushing to remote"
+    affected_items: []
+    effort: "5 minutes to add pre-push stage to quality_gates in each milestone task file"
+
+  - priority: low
+    category: best_practices
+    recommendation: "Make task names more specific (e.g., m2-001: 'Setup WebSocket' → 'Configure Socket.io with Redis adapter')"
+    affected_items: [m2-001]
+    effort: "5 minutes to improve task naming clarity"
+
+approval:
+  ready_for_development: false
+  conditions:
+    - "Fix task sizing violations: split m0-004 (180m → 2x90m), combine m2-003 with m2-004 (25m+35m → 60m)"
+    - "Add test-first instructions to tasks: m0-002, m1-005, m2-003 (global constraint tdd_required: true)"
+    - "Add style anchor references to service tasks: m1-003 (UserService), m2-005 (NotificationService)"
+    - "Add integration test task to m1 to satisfy TR-Testing requirement"
+    - "Clarify scope with product owner: BR-002 push notifications, BR-004 reporting dashboard, TR-Monitoring observability"
+  next_steps:
+    - "Update milestone-m0.tasks.yaml: split m0-004 into m0-004 and m0-005"
+    - "Update milestone-m1.tasks.yaml: add m1-007 integration tests, update m1-003 and m1-005 instructions"
+    - "Update milestone-m2.tasks.yaml: combine m2-003 and m2-004, add m2-008 observability, update m2-005 instructions"
+    - "Update milestones.yaml: adjust m2 success criteria (add 2-3 more specific criteria)"
+    - "Re-run 'sherpy review-plan' to validate fixes"
+    - "Obtain approval before starting development"

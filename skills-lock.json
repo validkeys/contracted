@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "skills": {
+    "implementation-plan-best-practices": {
+      "source": "validkeys/sherpy",
+      "commit": "da5c5d7184ecd284e548d1b1dd627a2e1fdffcb6",
+      "sourceType": "github",
+      "skillPath": "skills/implementation-plan-best-practices/SKILL.md",
+      "computedHash": "24818aab5db1c6feaa2ff845ca85ef3f3b257d4c21fef513484720ba1b6b1afa"
+    },
+    "implementation-plan-review": {
+      "source": "validkeys/sherpy",
+      "commit": "da5c5d7184ecd284e548d1b1dd627a2e1fdffcb6",
+      "sourceType": "github",
+      "skillPath": "skills/implementation-plan-review/SKILL.md",
+      "computedHash": "42727c4b74451b453ff3518f4701ed2a3e1d8847792874a3ac5e24fb516ff956"
+    }
+  }
+}
