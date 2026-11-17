@@ -28,13 +28,15 @@ jobs:
 
       - name: Upgrade npm and install pnpm 12
         # npm v11.5.1+ is required for OIDC publishing.
-        # pnpm 10+ removes the --git-checks flag that npm v11 rejects.
-        # We disable corepack and install pnpm 12 globally so it takes
-        # precedence over the corepack shim (which would enforce pnpm 9).
+        # pnpm 10.18.3+ removes the --git-checks flag that npm v11 rejects.
         run: |
           npm install -g npm@latest
           corepack disable
           npm install -g pnpm@12
+          echo "--- tool versions ---"
+          npm --version
+          pnpm --version
+          which pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
