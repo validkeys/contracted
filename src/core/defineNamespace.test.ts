@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
-import { ok, err } from 'neverthrow';
 import { expectTypeOf } from 'expect-type';
 import { defineNamespace, NAMESPACE_TAG, Namespace } from './defineNamespace';
 import { defineCommand } from './defineContract';
@@ -16,11 +15,6 @@ describe('defineNamespace', () => {
   const UserNotFoundError = defineError<'USER_NOT_FOUND', { userId: string }>(
     'USER_NOT_FOUND',
     'User not found'
-  );
-
-  const PostNotFoundError = defineError<'POST_NOT_FOUND', { postId: string }>(
-    'POST_NOT_FOUND',
-    'Post not found'
   );
 
   // User contracts / implementations
