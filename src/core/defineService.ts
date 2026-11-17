@@ -1,7 +1,6 @@
-import { z } from 'zod';
 import { Contract, ImplementedContract } from './defineContract';
-import { TaggedError, ErrorUnion, ValidationError } from './errors';
-import { ServiceWithContracts, CurriedService, MergeDependencies, MergeErrors, ServiceEntry } from './serviceFrom';
+import { ValidationError } from './errors';
+import { ServiceWithContracts, MergeDependencies, MergeErrors, ServiceEntry } from './serviceFrom';
 import { Namespace, NAMESPACE_TAG, NamespaceContractValue } from './defineNamespace';
 
 // ============================================================================
