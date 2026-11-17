@@ -515,3 +515,232 @@ describe('defineNamespace', () => {
     });
   });
 });
+
+// ==============================================================================
+// END-TO-END INTEGRATION (issue #7)
+// ==============================================================================
+
+describe('end-to-end integration (issue #7)', () => {
+  // ── Errors ──────────────────────────────────────────────────────────────────
+  const UserNotFoundError = defineError<'USER_NOT_FOUND', { userId: string }>(
+    'USER_NOT_FOUND', 'User not found'
+  );
+  const PostNotFoundError = defineError<'POST_NOT_FOUND', { postId: string }>(
+    'POST_NOT_FOUND', 'Post not found'
+  );
+
+  // ── User contracts ───────────────────────────────────────────────────────────
+  const createUserContract = defineCommand({
+    input: z.object({ name: z.string(), email: z.string().email() }),
+    output: z.object({ id: z.string(), name: z.string() }),
+    dependencies: {} as { userRepo: { save: (u: any) => Promise<void>; generate: () => string } },
+    errors: [UserNotFoundError] as const,
+  });
+
+  const getUserContract = defineCommand({
+    input: z.object({ userId: z.string() }),
+    output: z.object({ id: z.string(), name: z.string() }),
+    dependencies: {} as { userRepo: { findById: (id: string) => Promise<any | null> } },
+    errors: [UserNotFoundError] as const,
+  });
+
+  // ── Post contracts ───────────────────────────────────────────────────────────
+  const createPostContract = defineCommand({
+    input: z.object({ title: z.string(), authorId: z.string() }),
+    output: z.object({ id: z.string(), title: z.string(), authorId: z.string(), published: z.boolean() }),
+    dependencies: {} as { postRepo: { save: (p: any) => Promise<void>; generate: () => string } },
+    errors: [PostNotFoundError] as const,
+  });
+
+  const publishPostContract = defineCommand({
+    input: z.object({ postId: z.string() }),
+    output: z.object({ id: z.string(), title: z.string(), authorId: z.string(), published: z.boolean() }),
+    dependencies: {} as { postRepo: { findById: (id: string) => Promise<any | null>; update: (p: any) => Promise<void> } },
+    errors: [PostNotFoundError] as const,
+  });
+
+  // ── Health contract (flat) ───────────────────────────────────────────────────
+  const healthContract = defineCommand({
+    input: z.object({}),
+    output: z.object({ status: z.string() }),
+    dependencies: {} as Record<string, never>,
+    errors: [] as const,
+  });
+
+  // ── Implementations ──────────────────────────────────────────────────────────
+  const createUserImpl = createUserContract.implementation(async ({ input, deps }) => ({
+    id: deps.userRepo.generate(),
+    name: input.name,
+  }));
+
+  const getUserImpl = getUserContract.implementation(async ({ input, deps }) => {
+    const user = await deps.userRepo.findById(input.userId);
+    if (!user) throw new UserNotFoundError({ userId: input.userId });
+    return user;
+  });
+
+  const createPostImpl = createPostContract.implementation(async ({ input, deps }) => ({
+    id: deps.postRepo.generate(),
+    title: input.title,
+    authorId: input.authorId,
+    published: false,
+  }));
+
+  const publishPostImpl = publishPostContract.implementation(async ({ input, deps }) => {
+    const post = await deps.postRepo.findById(input.postId);
+    if (!post) throw new PostNotFoundError({ postId: input.postId });
+    const published = { ...post, published: true };
+    await deps.postRepo.update(published);
+    return published;
+  });
+
+  const healthImpl = healthContract.implementation(async () => ({ status: 'ok' }));
+
+  // ── Mock repos ───────────────────────────────────────────────────────────────
+  const mockUser = { id: 'u-1', name: 'Alice' };
+  const mockPost = { id: 'p-1', title: 'Hello', authorId: 'u-1', published: false };
+
+  const mockUserRepo = {
+    save: vi.fn().mockResolvedValue(undefined),
+    generate: vi.fn().mockReturnValue('u-new'),
+    findById: vi.fn().mockResolvedValue(mockUser),
+  };
+  const mockPostRepo = {
+    save: vi.fn().mockResolvedValue(undefined),
+    generate: vi.fn().mockReturnValue('p-new'),
+    findById: vi.fn().mockResolvedValue(mockPost),
+    update: vi.fn().mockResolvedValue(undefined),
+  };
+
+  // ============================================================================
+  // PATH 1: defineService with users + posts namespaces
+  // ============================================================================
+
+  describe('PATH 1: defineService with multiple namespaces', () => {
+    const appContract = defineService({
+      users: defineNamespace({ create: createUserContract, get: getUserContract }),
+      posts: defineNamespace({ create: createPostContract, publish: publishPostContract }),
+    });
+
+    const createAppService = appContract.implementation({
+      users: defineNamespace({ create: createUserImpl, get: getUserImpl }),
+      posts: defineNamespace({ create: createPostImpl, publish: publishPostImpl }),
+    });
+
+    it('service.users.create.run(input) succeeds', async () => {
+      const service = createAppService({ userRepo: mockUserRepo, postRepo: mockPostRepo });
+      const result = await service.users.create.run({ name: 'Bob', email: 'bob@example.com' });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value.name).toBe('Bob');
+        expect(result.value.id).toBe('u-new');
+      }
+    });
+
+    it('service.posts.publish.run(input) succeeds', async () => {
+      const service = createAppService({ userRepo: mockUserRepo, postRepo: mockPostRepo });
+      const result = await service.posts.publish.run({ postId: 'p-1' });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value.published).toBe(true);
+      }
+    });
+
+    it('service.users.create.schemas.input is defined', () => {
+      const service = createAppService({ userRepo: mockUserRepo, postRepo: mockPostRepo });
+      expect(service.users.create.schemas).toBeDefined();
+      expect(service.users.create.schemas.input).toBeDefined();
+    });
+
+    it('service.users.get.run(input) resolves correctly', async () => {
+      const service = createAppService({ userRepo: mockUserRepo, postRepo: mockPostRepo });
+      const result = await service.users.get.run({ userId: 'u-1' });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value.name).toBe('Alice');
+      }
+    });
+
+    it('service.posts.create.run(input) succeeds', async () => {
+      const service = createAppService({ userRepo: mockUserRepo, postRepo: mockPostRepo });
+      const result = await service.posts.create.run({ title: 'My Post', authorId: 'u-1' });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value.title).toBe('My Post');
+        expect(result.value.published).toBe(false);
+      }
+    });
+
+    it('dep injection: service requires ALL deps (userRepo + postRepo)', () => {
+      // @ts-expect-error — missing postRepo should cause TypeScript error
+      const incomplete = createAppService({ userRepo: mockUserRepo });
+      // Runtime still works since postRepo isn't accessed, but type is wrong
+      expect(incomplete).toBeDefined();
+    });
+  });
+
+  // ============================================================================
+  // PATH 2: serviceFrom with one flat command + one namespace
+  // ============================================================================
+
+  describe('PATH 2: serviceFrom mixed (flat + namespace)', () => {
+    const createMixedService = serviceFrom({
+      health: healthImpl,
+      users: defineNamespace({ create: createUserImpl }),
+    });
+
+    it('service.health.run({}) succeeds (flat command)', async () => {
+      const service = createMixedService({ userRepo: mockUserRepo });
+      const result = await service.health.run({});
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value.status).toBe('ok');
+      }
+    });
+
+    it('service.users.create.run(input) succeeds in same mixed instance', async () => {
+      const service = createMixedService({ userRepo: mockUserRepo });
+      const result = await service.users.create.run({ name: 'Mixed', email: 'mixed@example.com' });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value.name).toBe('Mixed');
+      }
+    });
+
+    it('dep injection: creating service with no deps causes TypeScript error', () => {
+      // @ts-expect-error — missing userRepo should cause TypeScript error
+      const badService = createMixedService({});
+      expect(badService).toBeDefined();
+    });
+  });
+
+  // ============================================================================
+  // PATH 3: serviceFromSimple with namespaces
+  // ============================================================================
+
+  describe('PATH 3: serviceFromSimple with namespace', () => {
+    const createSimpleService = serviceFromSimple({
+      users: defineNamespace({ create: createUserImpl }),
+    });
+
+    it('service.users.create(input) resolves (no .run)', async () => {
+      const service = createSimpleService({ userRepo: mockUserRepo });
+      const result = await service.users.create({ name: 'Simple', email: 'simple@example.com' });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value.name).toBe('Simple');
+      }
+    });
+
+    it('namespace commands are plain functions (not .run wrappers)', () => {
+      const service = createSimpleService({ userRepo: mockUserRepo });
+      expect(typeof service.users.create).toBe('function');
+    });
+
+    it('dep injection: creating service with wrong deps causes TypeScript error', () => {
+      // @ts-expect-error — missing userRepo should cause TypeScript error
+      const badService = createSimpleService({});
+      expect(badService).toBeDefined();
+    });
+  });
+});
