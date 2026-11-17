@@ -1,6 +1,6 @@
 ---
 name: contracted
-description: Use when building TypeScript services with @validkeys/contracted, defineCommand, defineService, defineError, or the service-command pattern. Covers contract definition, implementation, dependency injection, error handling with TaggedErrors, and service composition with Zod validation.
+description: Use when building TypeScript services with @validkeys/contracted, defineCommand, defineService, defineNamespace, defineError, or the service-command pattern. Covers contract definition, implementation, namespace grouping, dependency injection, error handling with TaggedErrors, and service composition with Zod validation.
 license: ISC
 compatibility: TypeScript project with @validkeys/contracted, neverthrow, and zod installed as peer dependencies
 metadata:
@@ -14,7 +14,7 @@ Contract-first TypeScript library for type-safe, composable services with automa
 
 **Install:** `pnpm add @validkeys/contracted neverthrow zod`
 
-**Workflow order:** Errors → Commands → Service Contract → Implementations → Service Factory
+**Workflow order:** Errors → Commands → (Namespaces) → Service Contract → Implementations → Service Factory
 
 ---
 
@@ -215,6 +215,93 @@ const result = await userService.getUser({ userId: '123' }); // ← no .run()
 
 ---
 
+## Namespaces
+
+Group related commands under a nested key with `defineNamespace`. Works with all three service-creation paths.
+
+```
+service.users.create.run(input)   // namespace "users", command "create"
+service.health.run(input)         // flat command — unchanged
+```
+
+### Define
+
+```typescript
+import { defineNamespace } from '@validkeys/contracted';
+
+const usersNamespace = defineNamespace({
+  create: createUserCommand,
+  get:    getUserCommand,
+});
+```
+
+- Accepts `Contract` or `ImplementedContract` values.
+- Nesting a `Namespace` inside a `Namespace` **throws at runtime** — one level deep only.
+
+### Use with `defineService`
+
+```typescript
+export const appContract = defineService({
+  health: healthCommand,
+  users: defineNamespace({ create: createUserCommand, get: getUserCommand }),
+  posts: defineNamespace({ create: createPostCommand }),
+});
+
+// Implement — wrap implementations in defineNamespace too
+export const createAppService = appContract.implementation({
+  health: healthCommand.implementation(healthImpl),
+  users: defineNamespace({
+    create: createUserCommand.implementation(createUserImpl),
+    get:    getUserCommand.implementation(getUserImpl),
+  }),
+  posts: defineNamespace({ create: createPostCommand.implementation(createPostImpl) }),
+});
+
+const service = createAppService({ userRepo, postRepo, ... });
+await service.users.create.run({ name: 'Alice', email: 'alice@example.com' });
+await service.health.run({});   // flat commands work alongside namespaced ones
+```
+
+### Use with `serviceFrom` / `serviceFromSimple`
+
+```typescript
+// serviceFrom — full metadata on each namespaced command
+const createAppService = serviceFrom({
+  health: healthCommand.implementation(healthImpl),
+  users: defineNamespace({ create: createUserCommand.implementation(createUserImpl) }),
+});
+const service = createAppService({ userRepo });
+await service.users.create.run(input);     // .run()
+service.users.create.schemas.input;        // Zod schema accessible
+
+// serviceFromSimple — no metadata, call directly
+const createSimple = serviceFromSimple({
+  users: defineNamespace({ create: createUserCommand.implementation(createUserImpl) }),
+});
+const simple = createSimple({ userRepo });
+await simple.users.create(input);          // no .run()
+```
+
+### Dependency Merging
+
+Deps from all namespaced commands are merged into the top-level intersection — provide them all when creating the service:
+
+```typescript
+// users.create requires { userRepo }, posts.publish requires { postRepo }
+const service = createAppService({ userRepo, postRepo });
+```
+
+### Missing-implementation guard
+
+If a namespace key is passed a plain object instead of a `Namespace`, or if a sub-command is missing, `serviceContract.implementation()` throws descriptively:
+
+```
+Missing namespace implementation for contract: users. Expected a Namespace object.
+Missing implementation for contract: users.get
+```
+
+---
+
 ## `withDependencies` — Pre-inject Dependencies
 
 ```typescript
@@ -283,6 +370,7 @@ src/
 
 - **Async Zod refinements are not supported.** `z.string().refine(async () => ...)` silently passes because the library uses `.safeParse()` (sync). Validate async invariants inside the implementation body and throw a `TaggedError`.
 - **`defineContract` is deprecated.** Alias for `defineCommand` — use `defineCommand` in all new code.
+- **Namespaces are one level deep only.** Nesting a `Namespace` inside a `Namespace` throws at runtime. Enforce grouping depth at the architecture level, not in code.
 
 ---
 

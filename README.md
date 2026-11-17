@@ -23,10 +23,10 @@ npx skills add @validkeys/contracted
   - [5. Implement the Service](#5-implement-the-service)
   - [6. Use the Service](#6-use-the-service)
 - [Service Contracts](#service-contracts)
+- [Namespaces](#namespaces)
 - [Error Handling](#error-handling)
 - [Advanced Features](#advanced-features)
 - [API Reference](#api-reference)
-- [Examples](#examples)
 
 ## Installation
 
@@ -73,7 +73,7 @@ Type-safe error handling using discriminated unions, enabling exhaustive pattern
 
 ```typescript
 import { z } from 'zod';
-import { defineCommand, defineError, defineService } from '@validkeys/contracted';
+import { defineCommand, defineError, defineService, defineNamespace } from '@validkeys/contracted';
 
 // 1. Define errors
 const UserNotFoundError = defineError<'USER_NOT_FOUND', { userId: string }>(
@@ -533,6 +533,141 @@ This pattern enables:
 - **Consistent API**: Same `define → implementation` pattern as contracts
 - **Better architecture**: Interface segregation across package boundaries
 
+## Namespaces
+
+Namespaces group related commands under a single key in a service, producing a nested API without requiring separate service definitions. They work with all three service-creation paths: `defineService`, `serviceFrom`, and `serviceFromSimple`.
+
+```
+service.users.create.run(input)   // namespace "users", command "create"
+service.users.get.run(input)      // namespace "users", command "get"
+service.health.run(input)         // flat command (no namespace)
+```
+
+### Define a Namespace
+
+```typescript
+import { defineNamespace } from '@validkeys/contracted';
+
+export const usersNamespace = defineNamespace({
+  create: createUserCommand,
+  get:    getUserCommand,
+});
+```
+
+`defineNamespace` accepts any `Contract` or `ImplementedContract` values. It returns a `Namespace` object that can be passed directly to `defineService`, `serviceFrom`, or `serviceFromSimple`.
+
+### Use with `defineService`
+
+```typescript
+// contracts/app/service.ts
+export const appContract = defineService({
+  health: healthCommand,
+  users: defineNamespace({
+    create: createUserCommand,
+    get:    getUserCommand,
+  }),
+  posts: defineNamespace({
+    create: createPostCommand,
+    publish: publishPostCommand,
+  }),
+});
+
+// Types available immediately
+export type AppService = typeof appContract.types.Service;
+export type AppDeps = typeof appContract.types.Dependencies;
+// AppDeps is the intersection of deps from health, users.create, users.get,
+// posts.create, and posts.publish — all in one type.
+```
+
+Implement it by wrapping the implementations in `defineNamespace` too:
+
+```typescript
+export const createAppService = appContract.implementation({
+  health: healthCommand.implementation(healthImpl),
+  users: defineNamespace({
+    create: createUserCommand.implementation(createUserImpl),
+    get:    getUserCommand.implementation(getUserImpl),
+  }),
+  posts: defineNamespace({
+    create: createPostCommand.implementation(createPostImpl),
+    publish: publishPostCommand.implementation(publishPostImpl),
+  }),
+});
+
+const service = createAppService({ userRepo, postRepo, ... });
+
+await service.users.create.run({ name: 'Alice', email: 'alice@example.com' });
+await service.posts.publish.run({ postId: 'p-1' });
+await service.health.run({});   // flat command still works
+```
+
+### Use with `serviceFrom`
+
+Pass implemented contracts wrapped in `defineNamespace`:
+
+```typescript
+import { serviceFrom, defineNamespace } from '@validkeys/contracted';
+
+const createAppService = serviceFrom({
+  health: healthCommand.implementation(healthImpl),
+  users: defineNamespace({
+    create: createUserCommand.implementation(createUserImpl),
+    get:    getUserCommand.implementation(getUserImpl),
+  }),
+});
+
+const service = createAppService({ userRepo, ... });
+
+// Full metadata preserved on namespaced commands
+await service.users.create.run(input);
+service.users.create.schemas.input;    // Zod schema
+service.users.create.errors;           // error constructors
+service.users.create.validateInput(x); // throws ZodError on invalid
+```
+
+### Use with `serviceFromSimple`
+
+```typescript
+import { serviceFromSimple, defineNamespace } from '@validkeys/contracted';
+
+const createAppService = serviceFromSimple({
+  users: defineNamespace({
+    create: createUserCommand.implementation(createUserImpl),
+  }),
+});
+
+const service = createAppService({ userRepo });
+
+// No .run() — the curried function is called directly
+await service.users.create({ name: 'Bob', email: 'bob@example.com' });
+```
+
+### Dependency Merging
+
+Dependencies from all namespaced commands are merged into the top-level dependency intersection, exactly like flat commands. You provide them all at once when creating the service:
+
+```typescript
+// users.create requires { userRepo }
+// posts.publish requires { postRepo }
+// Combined service requires { userRepo, postRepo }
+const service = createAppService({
+  userRepo: new UserRepository(),
+  postRepo: new PostRepository(),
+});
+```
+
+### One-Level Depth Only
+
+Namespaces are always one level deep. Passing a `Namespace` as a value inside another `Namespace` throws at runtime:
+
+```typescript
+// ✅ Allowed
+defineNamespace({ create: createUserCommand });
+
+// ❌ Throws: "defineNamespace: nested namespaces are not supported. Key "sub" is itself a Namespace."
+defineNamespace({ sub: defineNamespace({ create: createUserCommand }) });
+```
+
 ## Error Handling
 
 The architecture provides type-safe error handling through tagged errors. When using `implementation()`, ValidationError is automatically added to handle schema validation failures.
@@ -805,12 +940,20 @@ Creates a service factory with full contract metadata.
 Creates a simplified service factory with only execution functions.
 
 #### `defineService<T>(contracts)`
-Creates a service contract definition from individual contracts.
+Creates a service contract definition from individual contracts or namespaces.
 
 **Parameters:**
-- `contracts: Record<string, Contract>` - Object mapping command names to contract definitions
+- `contracts: Record<string, Contract | Namespace>` - Object mapping command names to contract definitions or namespaces
 
 **Returns:** `ServiceContract<T>` - Service contract with types and implementation method
+
+#### `defineNamespace<T>(contracts)`
+Groups related commands under a single key to produce a nested service API.
+
+**Parameters:**
+- `contracts: Record<string, Contract | ImplementedContract>` - Object mapping command names to contracts or implemented contracts. Nesting a `Namespace` inside another `Namespace` throws at runtime.
+
+**Returns:** `Namespace<T>` — an object tagged with `NAMESPACE_TAG` that can be passed to `defineService`, `serviceFrom`, or `serviceFromSimple`.
 
 #### `matchError<TError, TResult>(error, handlers)`
 Provides exhaustive pattern matching for tagged errors.
@@ -831,6 +974,9 @@ Type for auto-wrapped implementation functions (used with `implementation`).
 
 #### `ServiceContract<T>`
 Service contract interface that provides types before implementation exists.
+
+#### `Namespace<T>`
+Represents a group of commands nested under a single key in a service. Created by `defineNamespace`. Works with `defineService`, `serviceFrom`, and `serviceFromSimple`.
 
 #### `TaggedError<TTag>`
 Base class for all tagged errors.
@@ -853,6 +999,7 @@ The `src/example` folder contains a complete example showing:
 src/
 ├── core/                           # Core library code
 │   ├── defineCommand.ts           # Contract definition
+│   ├── defineNamespace.ts         # Namespace grouping
 │   ├── defineService.ts           # Service contract definition
 │   ├── errors.ts                  # Error handling utilities
 │   ├── serviceFrom.ts             # Service composition
