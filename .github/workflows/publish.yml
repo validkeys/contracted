@@ -27,7 +27,8 @@ jobs:
         with:
           node-version: '22.x'
           cache: 'pnpm'
-          registry-url: 'https://registry.npmjs.org'
+          # Do NOT set registry-url here — setup-node injects NODE_AUTH_TOKEN
+          # when registry-url is set, which breaks OIDC authentication.
 
       - name: Upgrade npm (OIDC requires npm >= 11.5.1)
         run: npm install -g npm@latest
@@ -43,7 +44,7 @@ jobs:
 
       - name: Publish to npm (OIDC — no token required)
         run: pnpm changeset publish --no-git-checks
-        # Do NOT set NODE_AUTH_TOKEN or NPM_TOKEN here.
-        # OIDC authentication is handled automatically by npm >= 11.5.1
-        # when id-token: write is granted and a trusted publisher is
-        # configured at https://www.npmjs.com/package/@validkeys/contracted
+        env:
+          # npm v11 removed the --git-checks flag; this silences the warning
+          # from older changeset versions that still pass it.
+          NPM_CONFIG_GIT_CHECKS: 'false'
