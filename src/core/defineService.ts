@@ -65,10 +65,24 @@ export type ImplementedContractsFrom<T extends Record<string, ServiceDefinitionE
 // ============================================================================
 
 /**
- * Widens `ImplementedContractsFrom<T>` to `Record<string, ServiceEntry>` so
- * it can be used as the type parameter of `MergeDependencies` etc.
- * TypeScript cannot prove the mapped conditional satisfies the strict constraint
- * without this intermediate widening.
+ * Widens `ImplementedContractsFrom<T>` to `Record<string, ServiceEntry>` so it
+ * can be passed to `MergeDependencies`, `MergeErrors`, and `ServiceWithContracts`.
+ *
+ * ### Why this exists
+ * TypeScript cannot statically prove that the mapped conditional type
+ * `ImplementedContractsFrom<T>` satisfies `Record<string, ServiceEntry>` because
+ * it involves a two-level conditional (Namespace branch + flat branch) whose
+ * combined result is too complex for the type checker to verify structurally.
+ *
+ * ### Fallback behaviour
+ * The `extends` check here **always passes** for well-formed `T` (i.e. any `T`
+ * that only contains `Contract` or `Namespace<Record<string, Contract>>` values).
+ * The `Record<string, ServiceEntry>` fallback branch is a safety net for inputs
+ * that TypeScript considers degenerate (e.g. `T = Record<string, never>`).
+ * When the fallback fires, `ServiceContract.types.Service`, `.Dependencies`, and
+ * `.Errors` lose their precise types and become wide. This is acceptable because:
+ * 1. The runtime behaviour is unaffected.
+ * 2. It only occurs for inputs that cannot produce a meaningful service anyway.
  */
 type ToServiceEntries<T extends Record<string, ServiceDefinitionEntry>> =
   ImplementedContractsFrom<T> extends Record<string, ServiceEntry>
