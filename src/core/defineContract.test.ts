@@ -34,6 +34,16 @@ describe('defineCommand', () => {
       expect(userCommand.schemas.output).toBeDefined();
       expect(userCommand.errors).toEqual([UserNotFoundError, ValidationError]);
     });
+
+    it('defaults errors to an empty array when the errors param is omitted', () => {
+      const cmd = defineCommand({
+        input: z.object({ id: z.string() }),
+        output: z.object({ ok: z.boolean() }),
+        dependencies: {} as Record<string, never>,
+        // errors intentionally omitted
+      });
+      expect(cmd.errors).toEqual([]);
+    });
   });
 
   describe('implementation method (auto-wrapped)', () => {

@@ -1,6 +1,24 @@
 import { z } from 'zod';
 import { ImplementedContract, CurriedImplementation } from './defineContract';
 import { ErrorUnion } from './errors';
+import { Namespace, NAMESPACE_TAG } from './defineNamespace';
+
+// ============================================================================
+// SHARED ALIASES
+// ============================================================================
+
+/** Shorthand for a fully-parameterized ImplementedContract */
+type AnyImplementedContract = ImplementedContract<any, any, any, any, any>;
+
+/** Shorthand for a Namespace whose contracts are ImplementedContracts */
+type AnyNamespace = Namespace<Record<string, AnyImplementedContract>>;
+
+/** Union that covers both flat commands and namespace values */
+export type ServiceEntry = AnyImplementedContract | AnyNamespace;
+
+// ============================================================================
+// HELPER TYPES
+// ============================================================================
 
 /**
  * Helper type that extracts the dependency types from a contract.
@@ -48,56 +66,129 @@ type UnionToIntersection<U> =
   (k: infer I) => void ? I : never;
 
 /**
- * Helper type that merges all dependencies from multiple contracts into a single type.
+ * Extracts all dependency types from a single service entry value.
  *
- * This creates an intersection of all dependency types from the contracts in the service,
- * ensuring that all dependencies required by any command are present.
+ * - For a flat `ImplementedContract`: extracts its `TDeps`.
+ * - For a `Namespace`: extracts deps from every inner contract.
+ */
+type ExtractEntryDependencies<E> =
+  E extends Namespace<infer NS>
+    ? ExtractDependencies<NS[keyof NS]>
+    : ExtractDependencies<E>;
+
+/**
+ * Extracts all error tuple types from a single service entry value.
  *
- * @template T - Record of contract names to implemented contracts
+ * - For a flat `ImplementedContract`: extracts its `TErrors`.
+ * - For a `Namespace`: extracts errors from every inner contract.
+ */
+type ExtractEntryErrors<E> =
+  E extends Namespace<infer NS>
+    ? ExtractErrors<NS[keyof NS]>
+    : ExtractErrors<E>;
+
+// ============================================================================
+// MERGE TYPES (exported — used by defineService.ts and other consumers)
+// ============================================================================
+
+/**
+ * Helper type that merges all dependencies from multiple contracts (and namespaces)
+ * into a single type.
+ *
+ * This creates an intersection of all dependency types from every command in the
+ * service, including commands nested inside namespaces.
+ *
+ * @template T - Record of service entries (implemented contracts or namespaces)
  *
  * @example
  * ```typescript
  * type AllDeps = MergeDependencies<{
- *   createUser: CreateUserContract,  // requires: { userRepo: UserRepository, logger: Logger }
- *   deleteUser: DeleteUserContract   // requires: { userRepo: UserRepository, auditService: AuditService }
+ *   createUser: CreateUserContract,       // requires: { userRepo, logger }
+ *   users: Namespace<{                    // requires: { idGenerator }
+ *     generateId: GenerateIdContract
+ *   }>
  * }>;
- * // Result: { userRepo: UserRepository, logger: Logger, auditService: AuditService }
+ * // Result: { userRepo: ..., logger: ..., idGenerator: ... }
  * ```
  */
-export type MergeDependencies<T extends Record<string, ImplementedContract<any, any, any, any, any>>> =
-  UnionToIntersection<ExtractDependencies<T[keyof T]>>;
+export type MergeDependencies<T extends Record<string, ServiceEntry>> =
+  UnionToIntersection<ExtractEntryDependencies<T[keyof T]>>;
 
 /**
- * Helper type that merges all error types from multiple contracts into a union.
+ * Helper type that merges all error types from multiple contracts (and namespaces)
+ * into a union.
  * 
- * @template T - Record of contract names to implemented contracts
+ * @template T - Record of service entries (implemented contracts or namespaces)
  * 
  * @example
  * ```typescript
  * type AllErrors = MergeErrors<{
  *   createUser: CreateUserContract,
- *   deleteUser: DeleteUserContract
+ *   users: Namespace<{ get: GetUserContract }>
  * }>;
  * // UserAlreadyExistsError | UserNotFoundError | ValidationError
  * ```
  */
-export type MergeErrors<T extends Record<string, ImplementedContract<any, any, any, any, any>>> = 
-  ErrorUnion<ExtractErrors<T[keyof T]>>;
+export type MergeErrors<T extends Record<string, ServiceEntry>> = 
+  ErrorUnion<ExtractEntryErrors<T[keyof T]>>;
+
+// ============================================================================
+// SERVICE SHAPE TYPES
+// ============================================================================
+
+/**
+ * Produces the curried shape for a single `ImplementedContract` —
+ * all metadata preserved, `run` curried.
+ */
+type FlatServiceEntry<C extends AnyImplementedContract> =
+  C extends ImplementedContract<infer TInput, infer TOutput, any, infer TOptions, infer TErrors>
+    ? Omit<C, 'run' | 'withDependencies'> & {
+        run: CurriedImplementation<z.infer<TInput>, z.infer<TOutput>, TOptions, ErrorUnion<TErrors>>;
+      }
+    : never;
+
+/**
+ * Produces the curried shape for a single `ImplementedContract` for
+ * the simple (metadata-free) variant.
+ */
+type FlatSimpleEntry<C extends AnyImplementedContract> =
+  C extends ImplementedContract<infer TInput, infer TOutput, any, infer TOptions, infer TErrors>
+    ? CurriedImplementation<z.infer<TInput>, z.infer<TOutput>, TOptions, ErrorUnion<TErrors>>
+    : never;
+
+/**
+ * Produces the nested object shape for a Namespace in `ServiceWithContracts`:
+ * `{ cmd: Omit<ImplementedContract, 'run' | 'withDependencies'> & { run: CurriedImpl } }`
+ */
+type NamespaceServiceShape<NS extends Record<string, AnyImplementedContract>> = {
+  [K in keyof NS]: NS[K] extends AnyImplementedContract ? FlatServiceEntry<NS[K]> : never;
+};
+
+/**
+ * Produces the nested object shape for a Namespace in `CurriedService`:
+ * `{ cmd: CurriedImplementation<...> }`
+ */
+type NamespaceSimpleShape<NS extends Record<string, AnyImplementedContract>> = {
+  [K in keyof NS]: NS[K] extends AnyImplementedContract ? FlatSimpleEntry<NS[K]> : never;
+};
 
 /**
  * Type for a service that includes all contract metadata along with curried run functions.
  * 
  * Each command in the service retains its contract metadata (schemas, types, errors)
  * but has its run function curried with dependencies already injected.
+ *
+ * Namespace entries produce a nested object:
+ * `service.users.create.run(input)` instead of `service.users.run(input)`.
  * 
- * @template T - Record of contract names to implemented contracts
+ * @template T - Record of service entries (implemented contracts or namespaces)
  */
-export type ServiceWithContracts<T extends Record<string, ImplementedContract<any, any, any, any, any>>> = {
-  [K in keyof T]: T[K] extends ImplementedContract<infer TInput, infer TOutput, infer TDeps, infer TOptions, infer TErrors>
-    ? Omit<T[K], 'run' | 'withDependencies'> & {
-        run: CurriedImplementation<z.infer<TInput>, z.infer<TOutput>, TOptions, ErrorUnion<TErrors>>;
-      }
-    : never
+export type ServiceWithContracts<T extends Record<string, ServiceEntry>> = {
+  [K in keyof T]: T[K] extends Namespace<infer NS>
+    ? NamespaceServiceShape<NS & Record<string, AnyImplementedContract>>
+    : T[K] extends AnyImplementedContract
+      ? FlatServiceEntry<T[K]>
+      : never;
 };
 
 /**
@@ -106,13 +197,22 @@ export type ServiceWithContracts<T extends Record<string, ImplementedContract<an
  * This provides a cleaner API when you only need to execute commands and don't
  * need access to the contract metadata.
  * 
- * @template T - Record of contract names to implemented contracts
+ * Namespace entries produce a nested object:
+ * `service.users.create(input)` instead of `service.users(input)`.
+ * 
+ * @template T - Record of service entries (implemented contracts or namespaces)
  */
-export type CurriedService<T extends Record<string, ImplementedContract<any, any, any, any, any>>> = {
-  [K in keyof T]: T[K] extends ImplementedContract<infer TInput, infer TOutput, any, infer TOptions, infer TErrors>
-    ? CurriedImplementation<z.infer<TInput>, z.infer<TOutput>, TOptions, ErrorUnion<TErrors>>
-    : never
+export type CurriedService<T extends Record<string, ServiceEntry>> = {
+  [K in keyof T]: T[K] extends Namespace<infer NS>
+    ? NamespaceSimpleShape<NS & Record<string, AnyImplementedContract>>
+    : T[K] extends AnyImplementedContract
+      ? FlatSimpleEntry<T[K]>
+      : never;
 };
+
+// ============================================================================
+// SERVICE FACTORY FUNCTIONS
+// ============================================================================
 
 /**
  * Creates a service factory function from a collection of implemented contracts.
@@ -124,9 +224,20 @@ export type CurriedService<T extends Record<string, ImplementedContract<any, any
  * The resulting service retains all contract metadata (schemas, types, errors)
  * while providing curried execution functions.
  * 
- * @template T - Record of contract names to implemented contracts
+ * Namespace values produce nested objects:
+ * ```typescript
+ * const createAppService = serviceFrom({
+ *   health: healthContract.implementation(healthImpl),
+ *   users: defineNamespace({ create: createUserContract.implementation(createUserImpl) }),
+ * });
+ * const service = createAppService({ userRepo, ... });
+ * service.health.run(input);         // flat
+ * service.users.create.run(input);   // namespaced
+ * ```
  * 
- * @param commands - Object mapping command names to implemented contracts
+ * @template T - Record of service entries (implemented contracts or namespaces)
+ * 
+ * @param commands - Object mapping command names to implemented contracts or namespaces
  * 
  * @returns Function that accepts dependencies and returns a service
  * 
@@ -160,26 +271,47 @@ export type CurriedService<T extends Record<string, ImplementedContract<any, any
  * ```
  */
 export function serviceFrom<
-  T extends Record<string, ImplementedContract<any, any, any, any, any>>
+  T extends Record<string, ServiceEntry>
 >(
   commands: T
 ): (deps: MergeDependencies<T>) => ServiceWithContracts<T> {
   return (deps: MergeDependencies<T>) => {
     const service = {} as ServiceWithContracts<T>;
     
-    for (const [commandName, contract] of Object.entries(commands)) {
-      // Create a curried version of each command with the provided dependencies
-      const curriedCommand = contract.withDependencies(deps);
-      
-      // Build the service command with all contract metadata but curried run
-      service[commandName as keyof T] = {
-        schemas: contract.schemas,
-        types: contract.types,
-        errors: contract.errors,
-        validateInput: contract.validateInput,
-        validateOutput: contract.validateOutput,
-        run: curriedCommand,
-      } as any;
+    for (const [commandName, entry] of Object.entries(commands)) {
+      if (entry && typeof entry === 'object' && NAMESPACE_TAG in entry) {
+        // ── Namespace branch: build a nested object for each inner contract ──
+        const ns = entry as AnyNamespace;
+        const nestedService: Record<string, any> = {};
+
+        for (const [cmdName, innerContract] of Object.entries(ns.contracts)) {
+          const ic = innerContract as AnyImplementedContract;
+          const curried = ic.withDependencies(deps);
+          nestedService[cmdName] = {
+            schemas: ic.schemas,
+            types: ic.types,
+            errors: ic.errors,
+            validateInput: ic.validateInput,
+            validateOutput: ic.validateOutput,
+            run: curried,
+          };
+        }
+
+        service[commandName as keyof T] = nestedService as any;
+      } else {
+        // ── Flat contract branch (unchanged from before) ──
+        const contract = entry as AnyImplementedContract;
+        const curriedCommand = contract.withDependencies(deps);
+
+        service[commandName as keyof T] = {
+          schemas: contract.schemas,
+          types: contract.types,
+          errors: contract.errors,
+          validateInput: contract.validateInput,
+          validateOutput: contract.validateOutput,
+          run: curriedCommand,
+        } as any;
+      }
     }
     
     return service;
@@ -193,9 +325,18 @@ export function serviceFrom<
  * functions without the contract metadata, providing a cleaner API when metadata
  * is not needed.
  * 
- * @template T - Record of contract names to implemented contracts
+ * Namespace values produce nested objects:
+ * ```typescript
+ * const createAppService = serviceFromSimple({
+ *   users: defineNamespace({ create: createUserContract.implementation(createUserImpl) }),
+ * });
+ * const service = createAppService({ userRepo });
+ * service.users.create(input);   // no .run, just the curried function
+ * ```
  * 
- * @param commands - Object mapping command names to implemented contracts
+ * @template T - Record of service entries (implemented contracts or namespaces)
+ * 
+ * @param commands - Object mapping command names to implemented contracts or namespaces
  * 
  * @returns Function that accepts dependencies and returns a simplified service
  * 
@@ -218,15 +359,30 @@ export function serviceFrom<
  * ```
  */
 export function serviceFromSimple<
-  T extends Record<string, ImplementedContract<any, any, any, any, any>>
+  T extends Record<string, ServiceEntry>
 >(
   commands: T
 ): (deps: MergeDependencies<T>) => CurriedService<T> {
   return (deps: MergeDependencies<T>) => {
     const service = {} as CurriedService<T>;
     
-    for (const [commandName, contract] of Object.entries(commands)) {
-      service[commandName as keyof T] = contract.withDependencies(deps) as any;
+    for (const [commandName, entry] of Object.entries(commands)) {
+      if (entry && typeof entry === 'object' && NAMESPACE_TAG in entry) {
+        // ── Namespace branch: build nested curried functions ──
+        const ns = entry as AnyNamespace;
+        const nestedService: Record<string, any> = {};
+
+        for (const [cmdName, innerContract] of Object.entries(ns.contracts)) {
+          const ic = innerContract as AnyImplementedContract;
+          nestedService[cmdName] = ic.withDependencies(deps);
+        }
+
+        service[commandName as keyof T] = nestedService as any;
+      } else {
+        // ── Flat contract branch (unchanged) ──
+        const contract = entry as AnyImplementedContract;
+        service[commandName as keyof T] = contract.withDependencies(deps) as any;
+      }
     }
     
     return service;
@@ -236,7 +392,7 @@ export function serviceFromSimple<
 /**
  * Helper type to extract all dependency types required by a service.
  * 
- * @template T - Record of contract names to implemented contracts
+ * @template T - Record of service entries (implemented contracts or namespaces)
  * 
  * @example
  * ```typescript
@@ -244,12 +400,12 @@ export function serviceFromSimple<
  * // { userRepo: UserRepository, emailService: EmailService }
  * ```
  */
-export type ServiceDependencies<T extends Record<string, ImplementedContract<any, any, any, any, any>>> = MergeDependencies<T>;
+export type ServiceDependencies<T extends Record<string, ServiceEntry>> = MergeDependencies<T>;
 
 /**
  * Helper type to extract all possible error types from a service.
  * 
- * @template T - Record of contract names to implemented contracts
+ * @template T - Record of service entries (implemented contracts or namespaces)
  * 
  * @example
  * ```typescript
@@ -257,4 +413,4 @@ export type ServiceDependencies<T extends Record<string, ImplementedContract<any
  * // UserAlreadyExistsError | UserNotFoundError | ValidationError
  * ```
  */
-export type ServiceErrors<T extends Record<string, ImplementedContract<any, any, any, any, any>>> = MergeErrors<T>;
+export type ServiceErrors<T extends Record<string, ServiceEntry>> = MergeErrors<T>;

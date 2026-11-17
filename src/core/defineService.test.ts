@@ -5,6 +5,7 @@ import { expectTypeOf } from 'expect-type';
 import { defineService } from './defineService';
 import { defineCommand } from './defineContract';
 import { defineError } from './errors';
+import { defineNamespace } from './defineNamespace';
 
 describe('defineService', () => {
   // Setup test contracts
@@ -148,6 +149,22 @@ describe('defineService', () => {
           // Missing createUser implementation
         } as any);
       }).toThrow('Missing implementation for contract: createUser');
+    });
+
+    it('should throw when a namespace key receives a plain object instead of a Namespace', () => {
+      const usersNamespace = defineNamespace({ getUser: getUserCommand });
+      const serviceContract = defineService({ users: usersNamespace });
+
+      const getUserImpl = getUserCommand.implementation(async () => ({
+        id: '1', name: 'Test', email: 'test@example.com'
+      }));
+
+      expect(() => {
+        serviceContract.implementation({
+          // Plain object — not wrapped in defineNamespace()
+          users: { getUser: getUserImpl } as any,
+        });
+      }).toThrow('Missing namespace implementation for contract: users. Expected a Namespace object wrapping implementations.');
     });
 
     it('should handle errors from implementations', async () => {
