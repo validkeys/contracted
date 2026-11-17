@@ -1,0 +1,51 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    name: Publish @validkeys/contracted
+    runs-on: ubuntu-latest
+    environment: npm
+
+    permissions:
+      contents: read
+      id-token: write  # required for OIDC trusted publishing
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm (OIDC requires npm >= 11.5.1)
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test:run
+
+      - name: Build
+        run: pnpm build
+
+      - name: Publish to npm (OIDC — no token required)
+        run: pnpm changeset publish
+        # Do NOT set NODE_AUTH_TOKEN or NPM_TOKEN here.
+        # OIDC authentication is handled automatically by npm >= 11.5.1
+        # when id-token: write is granted and a trusted publisher is
+        # configured at https://www.npmjs.com/package/@validkeys/contracted
