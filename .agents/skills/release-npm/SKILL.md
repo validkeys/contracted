@@ -96,10 +96,32 @@ The GitHub Actions workflow will:
 1. Install dependencies
 2. Run `pnpm test:run`
 3. Run `pnpm build`
-4. Run `pnpm changeset publish` — authenticated via OIDC, no token required
-5. The published package will include a provenance attestation automatically
+4. Run `npm stage publish` — submits the tarball to npm's staging area via OIDC
 
-Monitor progress at: https://github.com/validkeys/contracted/actions
+### Step 5 — Approve the staged release
+
+After the workflow succeeds, the package is **staged but not yet live**. A maintainer must
+review and approve it with 2FA before it becomes publicly available.
+
+**Via npmjs.com:**
+Go to https://www.npmjs.com/settings/~/staged-packages, find the pending release,
+review it, and click **Approve** (2FA prompt will appear).
+
+**Via CLI:**
+```bash
+# List staged packages waiting for approval
+npm stage list @validkeys/contracted
+
+# View details for a specific staged release
+npm stage view <stage-id>
+
+# Approve (triggers 2FA prompt)
+npm stage approve <stage-id>
+```
+5. The workflow completes with the package staged — it is **not yet live**.
+
+Monitor the CI workflow at: https://github.com/validkeys/contracted/actions  
+Review and approve staged releases at: https://www.npmjs.com/settings/~/staged-packages
 
 ---
 
@@ -160,12 +182,15 @@ git push origin main v4.3.0
 
 ## OIDC Trusted Publishing — How It Works
 
-Publishing no longer requires an npm token. Instead:
+Publishing uses staged publishing via OIDC — no npm token anywhere:
 
 1. The `publish.yml` workflow runs in the `npm` GitHub environment.
 2. GitHub mints a short-lived OIDC token for the job (`id-token: write` permission).
-3. npm CLI 11.5.1+ exchanges that token with npm's registry, which verifies it matches the trusted publisher configured on the package settings page.
-4. If the repository, workflow filename, and environment name all match, the publish is allowed and a provenance attestation is attached automatically.
+3. `npm stage publish` exchanges the token with npm's registry, which verifies it matches the trusted publisher on the package settings page.
+4. If repository, workflow filename, and environment name all match, the tarball is submitted to the **staging area** with a provenance attestation.
+5. A maintainer approves the staged release with 2FA before it goes live.
+
+**Why staged publishing?** npm's recommended security posture for trusted publishing is stage-only: CI cannot directly publish live releases. Each publish requires a human approval with 2FA, preventing automated supply-chain attacks even if the workflow is compromised.
 
 **Prerequisites (one-time setup — already done):**
 
@@ -173,7 +198,7 @@ Publishing no longer requires an npm token. Instead:
 |------|-------|
 | Create `npm` environment | https://github.com/validkeys/contracted/settings/environments |
 | Add trusted publisher | https://www.npmjs.com/package/@validkeys/contracted → Settings → Trusted Publishers |
-| Trusted publisher config | Owner: `validkeys`, Repo: `contracted`, Workflow: `publish.yml`, Env: `npm` |
+| Trusted publisher config | Owner: `validkeys`, Repo: `contracted`, Workflow: `publish.yml`, Env: `npm`, **Allow: stage publish only** |
 
 **Key constraint:** A newly created trusted publisher configuration that has not completed a successful publish within **48 hours** is automatically removed by npm. After setup, push a tag promptly.
 
@@ -190,25 +215,34 @@ Publishing no longer requires an npm token. Instead:
 - Confirm the job runs in the `npm` environment — check `environment: npm` is present in `publish.yml`.
 - Confirm the GitHub Actions runner is GitHub-hosted (`ubuntu-latest`). Self-hosted runners are not supported for OIDC publishing.
 
-### `changeset publish` says "nothing to publish"
-All pending changesets must be consumed by `changeset version` first. Check `.changeset/` for leftover files and re-run `pnpm changeset version`.
+### `npm stage publish` says "nothing to publish" or version already staged
+The package may already be staged. Check: `npm stage list @validkeys/contracted`.
+If a stale staged version exists, reject it first: `npm stage reject <stage-id>`.
 
 ### Tag pushed but workflow did not fire
 Confirm the tag matches `v*` (e.g. `v4.2.0`, not `4.2.0`). The workflow trigger is `push: tags: ['v*']`.
 
-### Accidental publish of wrong version
-npm does not allow re-publishing the same version.
-- `npm deprecate @validkeys/contracted@<bad-version> "published in error"` — marks it deprecated without removing it
-- `npm unpublish @validkeys/contracted@<bad-version>` — only possible within 72 hours of publish
+### Staged release not appearing on npmjs.com
+Check https://www.npmjs.com/settings/~/staged-packages. Staged versions appear there
+(not on the package page) until approved. The first ever staged publish also creates a
+placeholder `0.0.0-stage` version on the package page — this is expected.
+
+### Accidental staged publish of wrong version
+Reject the staged version before it is approved:
+```bash
+npm stage list @validkeys/contracted
+npm stage reject <stage-id>
+```
+If already approved and live, `npm deprecate @validkeys/contracted@<bad-version> "published in error"`.
 
 ### Emergency local publish (bypass CI)
-If the OIDC workflow is broken and you need to publish immediately:
+The trusted publisher is configured for **stage publish only** — direct `npm publish` via
+CI is intentionally not permitted. If you need to publish directly in an emergency:
 ```bash
 npm login          # interactive session token; use recovery code as OTP if prompted
-pnpm release       # pnpm build && changeset publish
-git push origin main --follow-tags
+pnpm build
+npm publish --access public    # direct publish from local machine
 ```
-Restore OIDC publishing afterwards.
 
 ---
 
@@ -218,10 +252,9 @@ Restore OIDC publishing afterwards.
 |------|---------|
 | `.changeset/config.json` | Changesets config — access level, base branch, changelog format |
 | `CHANGELOG.md` | Auto-updated by `changeset version` |
-| `.github/workflows/publish.yml` | OIDC publish workflow — fires on `v*` tags |
+| `.github/workflows/publish.yml` | OIDC publish workflow — fires on `v*` tags, runs `npm stage publish` |
 | `.github/workflows/ci.yml` | Tests + build on every push to main and PR |
 | `package.json` `scripts.tag` | `git push origin main --follow-tags` — triggers CI publish |
 | `package.json` `scripts.version` | `changeset version` |
-| `package.json` `scripts.release` | Local escape hatch: `pnpm build && changeset publish` |
 | `package.json` `files` | `["dist"]` — only compiled output is packed |
 | `tsconfig.json` | Excludes tests and examples from the build |
