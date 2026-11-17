@@ -42,7 +42,7 @@ jobs:
         run: pnpm build
 
       - name: Publish to npm (OIDC — no token required)
-        run: pnpm changeset publish
+        run: pnpm changeset publish --no-git-checks
         # Do NOT set NODE_AUTH_TOKEN or NPM_TOKEN here.
         # OIDC authentication is handled automatically by npm >= 11.5.1
         # when id-token: write is granted and a trusted publisher is
