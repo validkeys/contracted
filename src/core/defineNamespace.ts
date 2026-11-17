@@ -164,11 +164,12 @@ export interface Namespace<
  *   create: createUserContract,
  * });
  *
- * // Use in a service
+ * // Use in a service — pass the Namespace object directly, NOT usersNamespace.contracts.
+ * // Passing .contracts strips NAMESPACE_TAG and disables nested routing.
  * import { serviceFrom } from '@validkeys/contracted';
  *
  * const createAppService = serviceFrom({
- *   users: usersNamespace.contracts,  // or inline
+ *   users: usersNamespace,
  * });
  * ```
  */
